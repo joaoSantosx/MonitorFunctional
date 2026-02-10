@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "849329021614",
+    "project_id": "monitorfunctional-e9d464df",
+    "storage_bucket": "monitorfunctional-e9d464df.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:849329021614:android:3e0f372993a61de5d1433f",
+        "android_client_info": {
+          "package_name": "com.jvf.monitorfunctional"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAS369o1VCiIgFhUva1733_TYoTutflfGw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
