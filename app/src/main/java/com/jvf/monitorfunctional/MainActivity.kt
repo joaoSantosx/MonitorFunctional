@@ -2,146 +2,203 @@ package com.jvf.monitorfunctional
 
 import android.os.Bundle
 import android.content.Intent
-import android.provider.Settings
-import androidx.cardview.widget.CardView
 import androidx.appcompat.app.AppCompatActivity
 import android.widget.Toast
-import android.content.Context
-import androidx.appcompat.app.AlertDialog
-import java.util.UUID
-import android.widget.EditText
 import com.google.firebase.auth.FirebaseAuth
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
-import com.google.android.gms.auth.api.signin.GoogleSignInAccount
-import com.google.android.gms.common.api.ApiException
-import com.google.firebase.auth.GoogleAuthProvider
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Face
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material3.*
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import android.app.Activity
+import androidx.activity.result.contract.ActivityResultContracts
 
 class MainActivity : AppCompatActivity() {
     private lateinit var auth: FirebaseAuth
-    private val RC_SIGN_IN = 9001
+
+    private val googleSignInLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            startActivity(Intent(this, MenuActivity::class.java))
+            finish()
+        } else {
+            Toast.makeText(this, "Login cancelado ou falhou.", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
         auth = FirebaseAuth.getInstance()
 
-        // Referências aos Cards (Botões)
-        val btnResponsavel = findViewById<CardView>(R.id.cardResponsavel)
-        val btnDependente = findViewById<CardView>(R.id.cardDependente)
-
-        // 1. Fluxo do Responsável: Vai para a Dashboard
-        btnResponsavel.setOnClickListener {
-            if (auth.currentUser != null) {
-                // Já está logado! Vai direto pro Painel.
-                startActivity(Intent(this, DashboardActivity::class.java))
-            } else {
-                // Não está logado, inicia fluxo do Google
-                iniciarLoginGoogle()
-            }
+        setContent {
+            SelecaoPerfilScreen(
+                onResponsavelClick = { fluxoResponsavel() },
+                onDependenteClick = { fluxoDependente() }
+            )
         }
+    }
 
-        // 2. Fluxo do Filho: Vai para as Configurações de Acessibilidade
-
-            btnDependente.setOnClickListener {
-                val codigoFilho = obterOuGerarCodigoFilho()
-                AlertDialog.Builder(this)
-                    .setTitle("Modo Dependente Ativado")
-                    .setMessage("O código deste dispositivo é:\n\n$codigoFilho\n\nPeça para o seu Responsável inserir este código no celular dele.")
-                    .setPositiveButton("Ligar Acessibilidade") { _, _ ->
-                        abrirConfiguracoesAcessibilidade() // Sua função que abre as configs
-                    }
-                    .show()
-            }
+    private fun fluxoResponsavel() {
+        if (auth.currentUser != null) {
+            //Vai direto pro menu do pai.
+            startActivity(Intent(this, MenuActivity::class.java))
+        } else {
+            // Não está logado, inicia fluxo do Google
+            iniciarLoginGoogle()
         }
+    }
+    private fun fluxoDependente() {
+        startActivity(Intent(this, DependenteActivity::class.java))
+    }
 
     private fun iniciarLoginGoogle() {
-        // Configura o pedido de login pegando o ID que o próprio Firebase injeta no app
         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestIdToken(getString(R.string.default_web_client_id))
             .requestEmail()
             .build()
 
         val googleSignInClient = GoogleSignIn.getClient(this, gso)
-
         googleSignInClient.signOut().addOnCompleteListener {
             val signInIntent = googleSignInClient.signInIntent
-            startActivityForResult(signInIntent, RC_SIGN_IN)
+            googleSignInLauncher.launch(signInIntent)
         }
-
     }
+}
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
+@Composable
+fun SelecaoPerfilScreen(
+    onResponsavelClick: () -> Unit,
+    onDependenteClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = Color(0xFFF5F7FA)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
 
-        if (requestCode == RC_SIGN_IN) {
-            val task = GoogleSignIn.getSignedInAccountFromIntent(data)
-            try {
-                // Login com o Google deu certo, agora passa a credencial pro Firebase
-                val account = task.getResult(ApiException::class.java)!!
-                firebaseAuthWithGoogle(account.idToken!!)
-            } catch (e: ApiException) {
-                Toast.makeText(this, "Erro no Login Google", Toast.LENGTH_SHORT).show()
+            Spacer(modifier = Modifier.height(40.dp))
+
+            // Cabeçalho
+            Text(
+                text = "Quem vai usar este aparelho?",
+                fontSize = 26.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color(0xFF1E293B),
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = "Escolha o perfil para configurar o aplicativo corretamente neste dispositivo.",
+                fontSize = 16.sp,
+                color = Color.Gray,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+
+            Spacer(modifier = Modifier.height(48.dp))
+
+            // CARD O Responsável (Pai/Mãe)
+            PerfilCard(
+                titulo = "Sou o Responsável",
+                descricao = "Quero monitorar este ou outros aparelhos, ver alertas e configurar a IA.",
+                icone = Icons.Default.Security,
+                corDestaque = Color(0xFF1565C0),
+                onClick = onResponsavelClick
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // CARD O Dependente (Filho)
+            PerfilCard(
+                titulo = "Sou o Filho (Monitorado)",
+                descricao = "Este é o aparelho da criança que será protegido pelo aplicativo.",
+                icone = Icons.Default.Face,
+                corDestaque = Color(0xFF4CAF50),
+                onClick = onDependenteClick
+            )
+
+            // Mola invisível para não quebrar em telas diferentes
+            Spacer(modifier = Modifier.weight(1f))
+        }
+    }
+}
+@Composable
+fun PerfilCard(
+    titulo: String,
+    descricao: String,
+    icone: ImageVector,
+    corDestaque: Color,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+    ) {
+        Row(
+            modifier = Modifier.padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Círculo com o icone
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .background(corDestaque.copy(alpha = 0.1f), shape = CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icone,
+                    contentDescription = null,
+                    tint = corDestaque,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(20.dp))
+
+            // Textos
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = titulo,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = Color(0xFF1E293B)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = descricao,
+                    fontSize = 14.sp,
+                    color = Color.Gray,
+                    lineHeight = 20.sp
+                )
             }
         }
-    }
-
-    private fun firebaseAuthWithGoogle(idToken: String) {
-        val credential = GoogleAuthProvider.getCredential(idToken, null)
-        auth.signInWithCredential(credential)
-            .addOnCompleteListener(this) { task ->
-                if (task.isSuccessful) {
-                    Toast.makeText(this, "Bem-vindo, ${auth.currentUser?.displayName}", Toast.LENGTH_SHORT).show()
-                    startActivity(Intent(this, DashboardActivity::class.java))
-                } else {
-                    Toast.makeText(this, "Falha na Autenticação", Toast.LENGTH_SHORT).show()
-                }
-            }
-    }
-
-    private fun obterOuGerarCodigoFilho(): String {
-        val prefs = getSharedPreferences("MonitorPrefs", Context.MODE_PRIVATE)
-        var codigo = prefs.getString("codigo_filho", null)
-
-        //Se for primeiro acesso
-        if (codigo == null) {
-            codigo = UUID.randomUUID().toString().substring(0, 6).uppercase()
-            prefs.edit().putString("codigo_filho", codigo).apply()
-        }
-        return codigo
-    }
-
-    private fun abrirConfiguracoesAcessibilidade() {
-        Toast.makeText(this, "Procure por 'Monitor Parental JVF' e ative.", Toast.LENGTH_LONG).show()
-
-        try {
-            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-            startActivity(intent)
-        } catch (e: Exception) {
-            Toast.makeText(this, "Não foi possível abrir as configurações.", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun solicitarCodigoDoFilho() {
-        val input = EditText(this)
-        input.hint = "Ex: A7F9B2"
-
-        AlertDialog.Builder(this)
-            .setTitle("Vincular Dispositivo")
-            .setMessage("Digite o código de 6 dígitos gerado no celular do seu filho:")
-            .setView(input)
-            .setPositiveButton("Vincular") { _, _ ->
-                val codigoDigitado = input.text.toString().trim().uppercase()
-
-                if (codigoDigitado.length >= 5) {
-                    val prefs = getSharedPreferences("MonitorPrefs", Context.MODE_PRIVATE)
-                    prefs.edit().putString("codigo_monitorado", codigoDigitado).apply()
-
-                    // Vai pro Dashboard
-                    startActivity(Intent(this, DashboardActivity::class.java))
-                }
-            }
-            .setNegativeButton("Cancelar", null)
-            .show()
     }
 }

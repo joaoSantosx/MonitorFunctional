@@ -1,9 +1,12 @@
+import java.util.Properties
+import java.io.FileInputStream
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.ksp)
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
+    alias(libs.plugins.kotlin.compose)
 }
 
 android {
@@ -11,6 +14,10 @@ android {
     compileSdk = 36
     buildFeatures {
         buildConfig = true
+        compose = true
+    }
+    composeOptions {
+     kotlinCompilerExtensionVersion = "1.5.1"
     }
 
     defaultConfig {
@@ -19,8 +26,14 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
-
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        val properties = Properties()
+        val localPropertiesFile = rootProject.file("local.properties")
+        if (localPropertiesFile.exists()) {
+            properties.load(FileInputStream(localPropertiesFile))
+        }
+        buildConfigField("String", "youtube_api_key", properties.getProperty("youtube_api_key") ?: "\"\"")
+        buildConfigField("String", "gemini_api_key", properties.getProperty("gemini_api_key") ?: "\"\"")
     }
 
     buildTypes {
@@ -42,6 +55,16 @@ android {
 }
 
 dependencies {
+    val composeBom = platform("androidx.compose:compose-bom:2024.10.00")
+    implementation (composeBom)
+    implementation ("androidx.compose.material:material-icons-extended:1.7.8")
+    implementation ("com.google.firebase:firebase-messaging")
+    implementation("androidx.compose.ui:ui")
+    implementation ("androidx.compose.material3:material3")
+    implementation ("androidx.compose.ui:ui-tooling-preview")
+    implementation ("androidx.activity:activity-compose:1.8.2")
+    debugImplementation("androidx.compose.ui:ui-tooling")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
     implementation("androidx.credentials:credentials:1.3.0-alpha01")
     implementation("androidx.credentials:credentials-play-services-auth:1.3.0-alpha01")
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")

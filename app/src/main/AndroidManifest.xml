@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
-    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name = "android.permission.POST_NOTIFICATIONS"/>
 
     <application
         android:allowBackup="true"
@@ -13,22 +14,37 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.MonitorFunctional"
         tools:targetApi="31">
+
         <activity
-            android:name=".MainActivity"
+            android:name=".IntroductionActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".DashboardActivity" />
+
+        <activity android:name=".MainActivity" android:exported="false" />
+        <activity android:name=".DependenteActivity" android:exported="false" />
+        <activity android:name=".MenuActivity" android:exported="false" />
+        <activity android:name=".DashboardActivity" android:exported="false" />
+        <activity android:name=".ConfiguracoesActivity" android:exported="false" />
+        <activity android:name=".RelatoriosActivity" android:exported="false" />
+
+        <service
+            android:name=".service.AlertaNotificationService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
 
         <service
             android:name=".service.YouTubeMonitorService"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
             android:exported="true"
-            android:label="Monitor Parental JVF">
+            android:label="Monitor Parental JVF"
+            tools:ignore="AccessibilityPolicy,AcessibilityService">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
             </intent-filter>
