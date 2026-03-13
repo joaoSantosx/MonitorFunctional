@@ -30,6 +30,9 @@ import androidx.compose.ui.unit.sp
 import com.google.firebase.firestore.firestore
 import com.google.firebase.Firebase
 import com.google.firebase.firestore.SetOptions
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import kotlinx.coroutines.tasks.await
 
 class ConfiguracoesActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,37 +72,65 @@ fun ConfiguracoesScreen(codigoFilho: String, onVoltar: () -> Unit) {
     var notificacoesExpandido by remember { mutableStateOf(false) }
     var categoriasSalvas by remember { mutableStateOf(setOf("Todas as categorias")) }
     var categoriasEditando by remember { mutableStateOf(setOf("Todas as categorias")) }
-    val listaCategorias = listOf("Violência", "Adulto", "Educativo", "Entretenimento", "Outros")
-
+    val listaCategorias = listOf("Violência", "Adulto", "Educativo", "Entretenimento", "Filtro Personalizado", "Outros")
+    //regras dinâmicas
+    var novaPalavra by remember {mutableStateOf("")}
+    var palavrasMonitoradas by remember { mutableStateOf(listOf<String>()) }
     // Busca os dados iniciais do Firebase (IA,Notificações,PIN)
     LaunchedEffect(codigoFilho) {
-        // Busca IA
-        db.collection("regras_parentais").document(codigoFilho).get()
-            .addOnSuccessListener { doc ->
-                if (doc.exists()) {
-                    nivelSelecionado = doc.getString("nivel") ?: "ALTA"
+        try {
+            // Busca IA e palavras filtradas e espera
+            val docRegra = db.collection("regras_parentais").document(codigoFilho).get().await()
+            if (docRegra.exists()) {
+                nivelSelecionado = docRegra.getString("nivel") ?: "ALTA"
+
+                val palavrasSalvas = docRegra.get("palavras_monitoradas") as? List<*>
+                if (palavrasSalvas != null) {
+                    palavrasMonitoradas = palavrasSalvas.map { it.toString() }
                 }
             }
 
-        // Busca Notificações
-        db.collection("configuracoes_notificacao").document(codigoFilho).get()
-            .addOnSuccessListener { doc ->
-                if (doc.exists()) {
-                    val salvas = doc.get("categorias_permitidas") as? List<*>
-                    if (salvas != null && salvas.isNotEmpty()) {
-                        val setSalvo = salvas.filterIsInstance<String>().toSet()
-                        categoriasSalvas = setSalvo
-                        categoriasEditando = setSalvo
-                    }
+            // Busca Notificações e esperao
+            val docNotif = db.collection("configuracoes_notificacao").document(codigoFilho).get().await()
+            if (docNotif.exists()) {
+                val salvas = docNotif.get("categorias_permitidas") as? List<*>
+                if (salvas != null && salvas.isNotEmpty()) {
+                    val setSalvo = salvas.map { it.toString() }.toSet()
+                    categoriasSalvas = setSalvo
+                    categoriasEditando = setSalvo
                 }
-                carregando = false
             }
-            .addOnFailureListener { carregando = false }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        } finally {
+            carregando = false
+        }
     }
 
     val salvarRegraIA = { novoNivel: String ->
         nivelSelecionado = novoNivel
         db.collection("regras_parentais").document(codigoFilho).set(hashMapOf("nivel" to novoNivel), SetOptions.merge())
+    }
+
+    fun adicionarPalavra() {
+        if (novaPalavra.isNotBlank() && !palavrasMonitoradas.map { it.lowercase() }.contains(novaPalavra.trim().lowercase())) {
+            val novaLista = palavrasMonitoradas + novaPalavra.trim()
+            palavrasMonitoradas = novaLista
+
+            // 🚨 CORREÇÃO: Salvando na gaveta correta ("palavras_monitoradas")
+            db.collection("regras_parentais").document(codigoFilho)
+                .set(hashMapOf("palavras_monitoradas" to novaLista), SetOptions.merge())
+            novaPalavra = ""
+            Toast.makeText(contexto, "Regra adicionada!", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun removerPalavra(palavra: String) {
+        val novaLista = palavrasMonitoradas.filter { it != palavra }
+        palavrasMonitoradas = novaLista
+
+        db.collection("regras_parentais").document(codigoFilho)
+            .set(hashMapOf("palavras_monitoradas" to novaLista), SetOptions.merge())
     }
 
     // Lógica dos checkboxes
@@ -135,7 +166,7 @@ fun ConfiguracoesScreen(codigoFilho: String, onVoltar: () -> Unit) {
         if (carregando) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         } else {
-            // verticalScroll para telas pequenas não cortarem o texto
+            // função para tela pequena não cortar o texto
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -152,7 +183,7 @@ fun ConfiguracoesScreen(codigoFilho: String, onVoltar: () -> Unit) {
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Column {
-                        // O Cabeçalho que expande/recolhe
+                        // O Cabeçalho vai expandir/recolher
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -216,14 +247,6 @@ fun ConfiguracoesScreen(codigoFilho: String, onVoltar: () -> Unit) {
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color(0xFFE2E8F0))
 
 
-                // Configurações de rigidez
-
-                Text("Nível de Rigidez da Inteligência Artificial", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.DarkGray)
-
-                OpcaoRigidezCard("Alta (Recomendado)", "Bloqueia palavrões e jogos violentos. Foco em conteúdo infantil.", Color(0xFF4CAF50), nivelSelecionado == "ALTA") { salvarRegraIA("ALTA") }
-                OpcaoRigidezCard("Média", "Permite jogos infantis e humor leve. Bloqueia violência explícita.", Color(0xFFFF9800), nivelSelecionado == "MEDIA") { salvarRegraIA("MEDIA") }
-                OpcaoRigidezCard("Baixa", "Permite jogos violentos fictícios. Bloqueia apenas pornografia e crimes.", Color(0xFFF44336), nivelSelecionado == "BAIXA") { salvarRegraIA("BAIXA") }
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color(0xFFE2E8F0))
                 // Pin de segurança
                 Text("Segurança do Dispositivo", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.DarkGray)
 
@@ -248,7 +271,8 @@ fun ConfiguracoesScreen(codigoFilho: String, onVoltar: () -> Unit) {
                         }
                     }
                 }
-                // Pop-up para alterar o PIN
+
+                // Pop-up para alterar o PIN acompanhando o bloco
                 if (mostrarDialogPin) {
                     AlertDialog(
                         onDismissRequest = { mostrarDialogPin = false },
@@ -283,12 +307,87 @@ fun ConfiguracoesScreen(codigoFilho: String, onVoltar: () -> Unit) {
                     )
                 }
 
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color(0xFFE2E8F0))
+
+                // Configurações de rigidez MOVIDO PARA BAIXO
+                Text("Nível de Rigidez da Inteligência Artificial", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.DarkGray)
+
+                OpcaoRigidezCard("Alta (Recomendado)", "Alerta sobre palavrões e jogos violentos. Foco em conteúdo infantil.", Color(0xFF4CAF50), nivelSelecionado == "ALTA") { salvarRegraIA("ALTA") }
+                OpcaoRigidezCard("Média", "Desconsidera jogos infantis e humor leve. Alerta sobre pornografia e violência explícita.", Color(0xFFFF9800), nivelSelecionado == "MEDIA") { salvarRegraIA("MEDIA") }
+                OpcaoRigidezCard("Baixa", "Desconsidera jogos violentos fictícios. Alerta apenas pornografia e crimes.", Color(0xFFF44336), nivelSelecionado == "BAIXA") { salvarRegraIA("BAIXA") }
+
+
+                Text("Filtros Personalizados da Família", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.DarkGray)
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Adicione temas específicos que o aplicativo deve bloquear com base nas regras da sua casa (ex: Futebol, Maquiagem, Susto).", color = Color.Gray, fontSize = 14.sp)
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Campo de entrada e botão Add
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = novaPalavra,
+                                onValueChange = { novaPalavra = it },
+                                modifier = Modifier.weight(1f),
+                                label = { Text("Ex: Câmera escondida") },
+                                singleLine = true
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(
+                                onClick = { adicionarPalavra() },
+                                modifier = Modifier.height(56.dp) // Alinha a altura do botão com o TextField
+                                    .padding(top = 8.dp), // Ajuste fino visual
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0))
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = "Adicionar", tint = Color.White)
+                            }
+                        }
+
+                        // Lista dinâmica em formato de "Chips"
+                        if (palavrasMonitoradas.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            // O FlowRow permite que as "etiquetas" quebrem a linha automaticamente se a tela for pequena
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                palavrasMonitoradas.forEach { palavra ->
+                                    InputChip(
+                                        selected = false,
+                                        onClick = { removerPalavra(palavra) },
+                                        label = { Text(palavra) },
+                                        trailingIcon = {
+                                            Icon(
+                                                Icons.Default.Close,
+                                                contentDescription = "Remover",
+                                                modifier = Modifier.size(16.dp),
+                                                tint = Color.Gray
+                                            )
+                                        },
+                                        colors = InputChipDefaults.inputChipColors(
+                                            containerColor = Color(0xFFF1F5F9), // Cinza bem clarinho
+                                            labelColor = Color(0xFF1E293B)
+                                        ),
+                                        border = null // Tira a borda para ficar mais "clean"
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(32.dp))
             }
         }
     }
 }
-// O Checkbox componentizado
+//checkbox das notificações
 @Composable
 fun ItemCheckbox(texto: String, estaMarcado: Boolean, onClick: () -> Unit) {
     Row(
@@ -300,8 +399,7 @@ fun ItemCheckbox(texto: String, estaMarcado: Boolean, onClick: () -> Unit) {
         Text(texto, fontSize = 16.sp, color = Color(0xFF1E293B), fontWeight = if (estaMarcado) FontWeight.Bold else FontWeight.Normal)
     }
 }
-
-//Card Rigidez
+//card rigidez
 @Composable
 fun OpcaoRigidezCard(titulo: String, descricao: String, corDestaque: Color, selecionado: Boolean, onClick: () -> Unit) {
     Card(

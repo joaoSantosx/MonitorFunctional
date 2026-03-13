@@ -20,7 +20,7 @@ import androidx.compose.runtime.mutableStateListOf
 import com.jvf.monitorfunctional.ui.DashboardScreen
 class DashboardActivity : AppCompatActivity() {
     private lateinit var prefs: SharedPreferences
-    private val TAG = "JVF_Dashboard"
+    private val TAG = "Aware Kids"
 
     private val listaDeVideosState = mutableStateListOf<LogVideoApp>()
     private var apelidoState by mutableStateOf("")

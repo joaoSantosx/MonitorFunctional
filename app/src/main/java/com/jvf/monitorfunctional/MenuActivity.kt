@@ -34,6 +34,7 @@ import android.util.Log
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Search
 import androidx.core.content.edit
 
 class MenuActivity : AppCompatActivity() {
@@ -207,7 +208,34 @@ fun MenuScreen(apelidoAtual: String, onVerRelatorio: () -> Unit, onVincularNovo:
                 }
             }
 
-            // Card 3: Vincular Novo Dispositivo
+            // Card 3 Relatório de Pesquisas
+            Card(
+                modifier = Modifier.fillMaxWidth().clickable {
+                    if (apelidoAtual.isNotEmpty()) {
+                        contexto.startActivity(Intent(contexto, PesquisasActivity::class.java))
+                    } else {
+                        Toast.makeText(contexto, "Nenhum dispositivo vinculado ainda!", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Row(modifier = Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "Relatório de Pesquisas",
+                        tint = Color(0xFF673AB7),
+                        modifier = Modifier.size(40.dp)
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column {
+                        Text("Relatório de Pesquisas", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        Text("Veja os termos buscados pelo monitorado no YouTube", color = Color.Gray, fontSize = 14.sp)
+                    }
+                }
+            }
+
+            // Card 4: Vincular Novo Dispositivo
             Card(
                 modifier = Modifier.fillMaxWidth().clickable { onVincularNovo() },
                 colors = CardDefaults.cardColors(containerColor = Color.White),

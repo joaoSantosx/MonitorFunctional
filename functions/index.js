@@ -21,7 +21,7 @@ exports.enviarAlertaVideoInadequado = onDocumentCreated("historico_parental/{doc
     }
 
     let categoriaDetectada = "Outros"; // Padrão
-    const categoriasPossiveis = ["Violência", "Adulto", "Educativo", "Entretenimento", "Outros"];
+    const categoriasPossiveis = ["Violência", "Adulto", "Educativo", "Entretenimento","Filtro Personalizado", "Outros"];
 
     for (const cat of categoriasPossiveis) {
         if (motivoIa.toLowerCase().includes(cat.toLowerCase())) {
@@ -43,19 +43,24 @@ exports.enviarAlertaVideoInadequado = onDocumentCreated("historico_parental/{doc
         console.error("Erro ao buscar configurações de notificação:", error);
     }
 
-    // 4. O GRANDE FILTRO: O pai quer receber isso?
     const paiQuerReceberTodas = categoriasPermitidas.includes("Todas as categorias");
     const paiQuerReceberEsta = categoriasPermitidas.includes(categoriaDetectada);
 
     if (!paiQuerReceberTodas && !paiQuerReceberEsta) {
-        console.log(`🔇 Alerta Silenciado: A IA bloqueou o vídeo, mas o pai optou por não receber notificações da categoria '${categoriaDetectada}'.`);
-        return null; // Encerra a função sem mandar o Push!
+        console.log(`🔇 Alerta Silenciado: A IA considerou o vídeo como inseguro, mas o pai optou por não receber notificações da categoria '${categoriaDetectada}'.`);
+        return null;
     }
+
+    const tituloNotificacao = categoriaDetectada == "Filtro Personalizado"
+    ? "Alerta de Filtro Personalizado"
+    : "⚠️ Alerta de Segurança!:";
+
+
 
     const payload = {
         notification: {
             title: "⚠️ Alerta de Segurança!",
-            body: `Bloqueado (${categoriaDetectada}): ${titulo}`
+            body: `Registrado (${categoriaDetectada}): ${titulo}`
         },
         topic: `alerta_${codigoPareamento}`
     };

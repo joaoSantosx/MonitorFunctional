@@ -65,18 +65,25 @@ fun GraficoUsoHorario(dados: List<AcessoPorHora>) {
                     verticalAlignment = Alignment.Bottom
                 ) {
                     dados.forEach { item ->
-                        val proporcaoAltura = (item.quantidade.toFloat() / maxAcessos).coerceAtLeast(0.05f)
-
+                        val proporcaoAltura = if (item.quantidade == 0) {
+                            0f
+                        }
+                        else {
+                            (item.quantidade.toFloat() / maxAcessos).coerceAtLeast(0.05f)
+                        }
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .padding(horizontal = 1.dp)
                                 .fillMaxHeight(proporcaoAltura)
                                 .background(
-                                    color = if (item.quantidade == maxAcessos && item.quantidade > 0)
+                                    color = if (item.quantidade == 0){
+                                        Color.Transparent
+                                    } else if (item.quantidade == maxAcessos && item.quantidade > 0){
                                         Color(0xFF1565C0)
-                                    else
-                                        Color(0xFFBBDEFB),
+                                    }
+                                    else {
+                                        Color(0xFFBBDEFB)},
                                     shape = RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)
                                 )
                         )

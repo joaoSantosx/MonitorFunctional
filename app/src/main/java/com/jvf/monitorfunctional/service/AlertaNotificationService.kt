@@ -16,7 +16,7 @@ class AlertaNotificationService : FirebaseMessagingService(){
 
     override fun onNewToken(token: String){
         super.onNewToken(token)
-        Log.d("JVF_FCM", "Novo token recebido do Firebase: $token")
+        Log.d("Aware Kids", "Novo token recebido do Firebase: $token")
     }
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
         super.onMessageReceived(remoteMessage)

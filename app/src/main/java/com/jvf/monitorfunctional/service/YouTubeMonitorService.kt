@@ -18,15 +18,19 @@ import java.net.URL
 import java.net.URLEncoder
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.tasks.await
-
-
+import kotlinx.coroutines.Job
 @SuppressLint("AccessibilityPolicy")
 class YouTubeMonitorService : AccessibilityService() {
 
     private val youtubeApiKey = BuildConfig.youtube_api_key
-    private val TAG = "JVF_Monitor"
+    private val TAG = "Aware Kids"
     private var ultimoTituloCapturado: String? = null
+
+    private var ultimaPesquisaCapturada: String? = null
+
     private val cacheVideosAnalisados = mutableMapOf<String, Long>()
+    private val cachePesquisas = mutableMapOf<String, Long>()
+
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -47,20 +51,20 @@ class YouTubeMonitorService : AccessibilityService() {
         val pacoteAtual = event.packageName?.toString() ?: ""
         if (pacoteAtual.contains("settings") || pacoteAtual.contains("config") || pacoteAtual.contains("accessibility")) {
 
-            Log.e("JVF_DEFESA", "!O usuário abriu as configurações! Pacote: $pacoteAtual")
+            Log.e("Aware Kids_DEFESA", "!O usuário abriu as configurações! Pacote: $pacoteAtual")
 
             val prefs = applicationContext.getSharedPreferences("MonitorPrefs", MODE_PRIVATE)
             val protecaoAtiva = prefs.getBoolean("protecao_ativa", true)
 
-            Log.e("JVF_DEFESA", "A proteção está ativa no banco local? $protecaoAtiva")
+            Log.e("Aware Kids_DEFESA", "A proteção está ativa no banco local? $protecaoAtiva")
 
             if (protecaoAtiva) {
                 val estaNaTelaDeDesativar = procurarTextoNaTela(rootNode, "Monitor Parental")
 
-                Log.e("JVF_DEFESA", "O nome do serviço apareceu na tela? $estaNaTelaDeDesativar")
+                Log.e("Aware Kids_DEFESA", "O nome do serviço apareceu na tela? $estaNaTelaDeDesativar")
 
                 if (estaNaTelaDeDesativar) {
-                    Log.e("JVF_DEFESA", " ENCERRANDO tela de configurações!")
+                    Log.e("Aware Kids_DEFESA", " ENCERRANDO tela de configurações!")
                     performGlobalAction(GLOBAL_ACTION_HOME)
                     android.widget.Toast.makeText(applicationContext, "Área restrita aos responsáveis.", android.widget.Toast.LENGTH_SHORT).show()
                     return
@@ -70,6 +74,32 @@ class YouTubeMonitorService : AccessibilityService() {
         // Garante que está no YouTube
         if (event.packageName?.toString()?.contains("youtube") != true) return
 
+
+        if (estaNaTelaDeResultados(rootNode)) {
+            val textoPesquisado = capturarPesquisaConfirmada(rootNode)
+
+            if (textoPesquisado != null && textoPesquisado != ultimaPesquisaCapturada) {
+                ultimaPesquisaCapturada = textoPesquisado
+
+                val agora = System.currentTimeMillis()
+                val tempoUltimaPesquisa = cachePesquisas[textoPesquisado] ?: 0L
+                val mSPassados = (agora - tempoUltimaPesquisa)
+
+                if (mSPassados < 300000) {
+                    Log.d(TAG, "Pesquisa ignorada (já registrada recentemente): $textoPesquisado)")
+                } else {
+                    ultimaPesquisaCapturada = textoPesquisado
+                    cachePesquisas[textoPesquisado] = agora
+                    Log.w(TAG, "🕵️‍♂️ Pesquisa do usuário localizada: $textoPesquisado")
+                    salvarPesquisaNoFirebase(textoPesquisado)
+
+                    if (cachePesquisas.size > 100){
+                        cachePesquisas.clear()
+                        Log.i(TAG, "Limpeza de cache de pesquisas realizada com sucesso")
+                    }
+                }
+            }
+        }
         //Garante que o usuário está na tela de reprodução
         if (!estaNaTelaDeReproducao(rootNode)) return
 
@@ -102,6 +132,11 @@ class YouTubeMonitorService : AccessibilityService() {
         }
         cacheVideosAnalisados[titulo] = agora
 
+        if (cacheVideosAnalisados.size > 100) {
+            cacheVideosAnalisados.clear()
+            Log.i(TAG, "Limpeza de cache de videos realizada (Prevenção de Memória)")
+        }
+
         Log.e(TAG, "Novo título capturado: $titulo - Enviando para anaálise...")
 
         CoroutineScope(Dispatchers.IO).launch{
@@ -111,19 +146,25 @@ class YouTubeMonitorService : AccessibilityService() {
                 val bancoDeDados = Firebase.firestore
 
                 var nivelRigidezAtual = "ALTA" // Nível padrão
+                var palavrasMonitoradas = listOf<String>()
                 try {
                     if (codigoFilho != "SEM_CODIGO") {
                         val docRegra = bancoDeDados.collection("regras_parentais").document(codigoFilho).get().await()
                         if (docRegra.exists()) {
                             nivelRigidezAtual = docRegra.getString("nivel") ?: "ALTA"
+
+                            val palavrasSalvas = docRegra.get("palavras_monitoradas") as? List<*>
+                            if (palavrasSalvas != null) {
+                                palavrasMonitoradas = palavrasSalvas.map { it.toString() }
+                            }
                         }
                     }
                 } catch (e: Exception) {
-                    Log.w(TAG, "⚠ Erro ao buscar regra, usando ALTA por padrão.", e)
+                    Log.w(TAG, "⚠ Erro ao buscar regra, usando padrões.", e)
                 }
 
                 val analisador = AnaliseIA()
-                val resultadoIA = analisador.verificarSeguranca(titulo, comentarios, nivelRigidezAtual)
+                val resultadoIA = analisador.verificarSeguranca(titulo, comentarios, nivelRigidezAtual, palavrasMonitoradas)
                 Log.i(TAG, "IA: Seguro=${resultadoIA.ehSeguro} | Nível: $nivelRigidezAtual | Motivo: ${resultadoIA.detalhes}")
 
                 val logVideo = hashMapOf(
@@ -278,5 +319,44 @@ class YouTubeMonitorService : AccessibilityService() {
             }
         }
         return false
+    }
+
+    private fun estaNaTelaDeResultados(root: AccessibilityNodeInfo): Boolean {
+        // Quando o YouTube carrega os resultados, ele cria um elemento com este ID no topo
+        val searchQuery = root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/search_query")
+        return searchQuery.isNotEmpty()
+    }
+    private fun capturarPesquisaConfirmada(root: AccessibilityNodeInfo): String? {
+        val listaPesquisa = root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/search_query")
+
+        for (node in listaPesquisa) {
+            val texto = node.text?.toString()
+            if (!texto.isNullOrBlank()) {
+                return texto.trim()
+            }
+        }
+        return null
+    }
+    private fun salvarPesquisaNoFirebase(termoPesquisado: String) {
+        val prefs = applicationContext.getSharedPreferences("MonitorPrefs", MODE_PRIVATE)
+        val codigoFilho = prefs.getString("codigo_filho", "SEM_CODIGO") ?: "SEM_CODIGO"
+
+        if (codigoFilho == "SEM_CODIGO") return
+
+        val bancoDeDados = Firebase.firestore
+        val logPesquisa = hashMapOf(
+            "termo" to termoPesquisado,
+            "data_hora" to java.util.Date(),
+            "timestamp" to System.currentTimeMillis(),
+            "codigo_pareamento" to codigoFilho
+        )
+        bancoDeDados.collection("historico_pesquisas")
+            .add(logPesquisa)
+            .addOnSuccessListener {
+                Log.d(TAG, "Pesquisa salva na nuvem com sucesso: $termoPesquisado")
+            }
+            .addOnFailureListener { e ->
+                Log.e(TAG, "Erro ao salvar pesquisa na nuvem", e)
+            }
     }
 }

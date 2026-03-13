@@ -26,7 +26,6 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 
-
 @Composable
 fun DashboardScreen(
     apelido: String,
