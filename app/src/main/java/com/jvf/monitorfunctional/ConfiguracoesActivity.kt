@@ -33,6 +33,7 @@ import com.google.firebase.firestore.SetOptions
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import kotlinx.coroutines.tasks.await
+import com.jvf.monitorfunctional.ui.PremiumActivity
 
 class ConfiguracoesActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -40,8 +41,7 @@ class ConfiguracoesActivity : AppCompatActivity() {
 
         val prefs = getSharedPreferences("MonitorPrefs", MODE_PRIVATE)
         val codigoMonitorado = prefs.getString("codigo_monitorado", "") ?: ""
-
-
+        val planoAtual = prefs.getString("tipo_plano", "FREE") ?: "FREE"
         if (codigoMonitorado.isEmpty()) {
             Toast.makeText(this, "Nenhum dispositivo vinculado para configurar.", Toast.LENGTH_SHORT).show()
             finish()
@@ -50,6 +50,7 @@ class ConfiguracoesActivity : AppCompatActivity() {
         setContent {
             ConfiguracoesScreen(
                 codigoFilho = codigoMonitorado,
+                planoAtual = planoAtual,
                 onVoltar = { finish() }
             )
         }
@@ -58,7 +59,7 @@ class ConfiguracoesActivity : AppCompatActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ConfiguracoesScreen(codigoFilho: String, onVoltar: () -> Unit) {
+fun ConfiguracoesScreen(codigoFilho: String, planoAtual: String, onVoltar: () -> Unit) {
     val contexto = LocalContext.current
     val db = Firebase.firestore
     var carregando by remember { mutableStateOf(true) }
@@ -73,9 +74,12 @@ fun ConfiguracoesScreen(codigoFilho: String, onVoltar: () -> Unit) {
     var categoriasSalvas by remember { mutableStateOf(setOf("Todas as categorias")) }
     var categoriasEditando by remember { mutableStateOf(setOf("Todas as categorias")) }
     val listaCategorias = listOf("Violência", "Adulto", "Educativo", "Entretenimento", "Filtro Personalizado", "Outros")
-    //regras dinâmicas
+    //regras dinâmicas (blocklist)
     var novaPalavra by remember {mutableStateOf("")}
     var palavrasMonitoradas by remember { mutableStateOf(listOf<String>()) }
+    //regras dinâmicas(whitelist)
+    var novaPalavraPermitida by remember {mutableStateOf("")}
+    var palavrasPermitidas by remember { mutableStateOf(listOf<String>()) }
     // Busca os dados iniciais do Firebase (IA,Notificações,PIN)
     LaunchedEffect(codigoFilho) {
         try {
@@ -87,6 +91,12 @@ fun ConfiguracoesScreen(codigoFilho: String, onVoltar: () -> Unit) {
                 val palavrasSalvas = docRegra.get("palavras_monitoradas") as? List<*>
                 if (palavrasSalvas != null) {
                     palavrasMonitoradas = palavrasSalvas.map { it.toString() }
+                }
+
+                // 🚨 BUSCA AS PALAVRAS PERMITIDAS
+                val palavrasPermitidasSalvas = docRegra.get("palavras_permitidas") as? List<*>
+                if (palavrasPermitidasSalvas != null) {
+                    palavrasPermitidas = palavrasPermitidasSalvas.map { it.toString() }
                 }
             }
 
@@ -111,13 +121,12 @@ fun ConfiguracoesScreen(codigoFilho: String, onVoltar: () -> Unit) {
         nivelSelecionado = novoNivel
         db.collection("regras_parentais").document(codigoFilho).set(hashMapOf("nivel" to novoNivel), SetOptions.merge())
     }
-
+    //blacklist
     fun adicionarPalavra() {
         if (novaPalavra.isNotBlank() && !palavrasMonitoradas.map { it.lowercase() }.contains(novaPalavra.trim().lowercase())) {
             val novaLista = palavrasMonitoradas + novaPalavra.trim()
             palavrasMonitoradas = novaLista
 
-            // 🚨 CORREÇÃO: Salvando na gaveta correta ("palavras_monitoradas")
             db.collection("regras_parentais").document(codigoFilho)
                 .set(hashMapOf("palavras_monitoradas" to novaLista), SetOptions.merge())
             novaPalavra = ""
@@ -131,6 +140,23 @@ fun ConfiguracoesScreen(codigoFilho: String, onVoltar: () -> Unit) {
 
         db.collection("regras_parentais").document(codigoFilho)
             .set(hashMapOf("palavras_monitoradas" to novaLista), SetOptions.merge())
+    }
+
+    //whitelist
+    fun adicionarPalavraPermitida() {
+        if (novaPalavraPermitida.isNotBlank() && !palavrasPermitidas.map { it.lowercase() }.contains(novaPalavraPermitida.trim().lowercase())) {
+            val novaLista = palavrasPermitidas + novaPalavraPermitida.trim()
+            palavrasPermitidas = novaLista
+            db.collection("regras_parentais").document(codigoFilho).set(hashMapOf("palavras_permitidas" to novaLista), SetOptions.merge())
+            novaPalavraPermitida = ""
+            Toast.makeText(contexto, "Exceção adicionada!", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun removerPalavraPermitida(palavra: String) {
+        val novaLista = palavrasPermitidas.filter { it != palavra }
+        palavrasPermitidas = novaLista
+        db.collection("regras_parentais").document(codigoFilho).set(hashMapOf("palavras_permitidas" to novaLista), SetOptions.merge())
     }
 
     // Lógica dos checkboxes
@@ -183,7 +209,6 @@ fun ConfiguracoesScreen(codigoFilho: String, onVoltar: () -> Unit) {
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Column {
-                        // O Cabeçalho vai expandir/recolher
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -211,7 +236,18 @@ fun ConfiguracoesScreen(codigoFilho: String, onVoltar: () -> Unit) {
 
                                 ItemCheckbox("Todas as categorias", categoriasEditando.contains("Todas as categorias")) { alternarCategoria("Todas as categorias") }
                                 listaCategorias.forEach { cat ->
-                                    ItemCheckbox(cat, categoriasEditando.contains(cat)) { alternarCategoria(cat) }
+                                    val isBloqueado = (cat == "Filtro Personalizado" && planoAtual != "PREMIUM")
+                                    ItemCheckbox(
+                                        texto = if (isBloqueado) "$cat 🔒" else cat,
+                                        estaMarcado = categoriasEditando.contains(cat) && !isBloqueado,
+                                        isDesativado = isBloqueado // Vamos precisar ajustar o ItemCheckbox lá embaixo
+                                    ) {
+                                        if (isBloqueado) {
+                                            contexto.startActivity(android.content.Intent(contexto, PremiumActivity::class.java))
+                                        } else {
+                                            alternarCategoria(cat)
+                                        }
+                                    }
                                 }
 
                                 Spacer(modifier = Modifier.height(16.dp))
@@ -246,7 +282,163 @@ fun ConfiguracoesScreen(codigoFilho: String, onVoltar: () -> Unit) {
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color(0xFFE2E8F0))
 
+                Text("Nível de Rigidez da Inteligência Artificial", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.DarkGray)
 
+                OpcaoRigidezCard("Alta (Recomendado)", "Alerta sobre palavrões e jogos violentos. Foco em conteúdo infantil.", Color(0xFF4CAF50), nivelSelecionado == "ALTA") { salvarRegraIA("ALTA") }
+                OpcaoRigidezCard("Média", "Desconsidera jogos infantis e humor leve. Alerta sobre pornografia e violência explícita.", Color(0xFFFF9800), nivelSelecionado == "MEDIA") { salvarRegraIA("MEDIA") }
+                OpcaoRigidezCard("Baixa", "Desconsidera jogos violentos fictícios. Alerta apenas pornografia e crimes.", Color(0xFFF44336), nivelSelecionado == "BAIXA") { salvarRegraIA("BAIXA") }
+
+
+                Text("Filtros Personalizados da Família", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.DarkGray)
+
+                //Blacklist e whitelist
+                if (planoAtual == "PREMIUM") {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                "Adicione temas específicos que o aplicativo deve considerar como nocivo com base nas regras da sua casa (ex: Futebol, Maquiagem, Susto, Armas).",
+                                color = Color.Gray,
+                                fontSize = 14.sp
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // Campo de entrada e botão Add
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                OutlinedTextField(
+                                    value = novaPalavra,
+                                    onValueChange = { novaPalavra = it },
+                                    modifier = Modifier.weight(1f),
+                                    label = { Text("Ex: Câmera escondida") },
+                                    singleLine = true
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Button(
+                                    onClick = { adicionarPalavra() },
+                                    modifier = Modifier.height(56.dp)
+                                        .padding(top = 8.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(
+                                            0xFF1565C0
+                                        )
+                                    )
+                                ) {
+                                    Icon(
+                                        Icons.Default.Add,
+                                        contentDescription = "Adicionar",
+                                        tint = Color.White
+                                    )
+                                }
+                            }
+
+                            // Lista dinâmica em formato de "Chips"
+                            if (palavrasMonitoradas.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(16.dp))
+                                // etiquetas quebrem a linha automaticamente se a tela for pequena
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    palavrasMonitoradas.forEach { palavra ->
+                                        InputChip(
+                                            selected = false,
+                                            onClick = { removerPalavra(palavra) },
+                                            label = { Text(palavra) },
+                                            trailingIcon = {
+                                                Icon(
+                                                    Icons.Default.Close,
+                                                    contentDescription = "Remover",
+                                                    modifier = Modifier.size(16.dp),
+                                                    tint = Color.Gray
+                                                )
+                                            },
+                                            colors = InputChipDefaults.inputChipColors(
+                                                containerColor = Color(0xFFF1F5F9), // Cinza bem clarinho
+                                                labelColor = Color(0xFF1E293B)
+                                            ),
+                                            border = null
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    //Whitelist
+                    Text("Exceções Permitidas", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.DarkGray)
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("Adicione palavras que a IA deve sempre liberar, mesmo que pareçam suspeitas (ex: Minecraft, Roblox).", color = Color.Gray, fontSize = 14.sp)
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                OutlinedTextField(
+                                    value = novaPalavraPermitida,
+                                    onValueChange = { novaPalavraPermitida = it },
+                                    modifier = Modifier.weight(1f),
+                                    label = { Text("Ex: Minecraft") },
+                                    singleLine = true
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Button(
+                                    onClick = { adicionarPalavraPermitida() },
+                                    modifier = Modifier.height(56.dp).padding(top = 8.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)) // Verde para liberar
+                                ) { Icon(Icons.Default.Add, contentDescription = "Adicionar", tint = Color.White) }
+                            }
+
+                            if (palavrasPermitidas.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(16.dp))
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    palavrasPermitidas.forEach { palavra ->
+                                        InputChip(
+                                            selected = false,
+                                            onClick = { removerPalavraPermitida(palavra) },
+                                            label = { Text(palavra) },
+                                            trailingIcon = { Icon(Icons.Default.Close, contentDescription = "Remover", modifier = Modifier.size(16.dp), tint = Color(0xFF2E7D32)) },
+                                            colors = InputChipDefaults.inputChipColors(containerColor = Color(0xFFE8F5E9), labelColor = Color(0xFF1B5E20)), // Fundo verde claro, texto verde escuro
+                                            border = null
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // MODO FREE: Mostra o Banner de Venda
+                    Card(
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            contexto.startActivity(android.content.Intent(contexto, PremiumActivity::class.java))
+                        },
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF9C4)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Lock, contentDescription = null, tint = Color(0xFFFBC02D), modifier = Modifier.size(32.dp))
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Desbloqueie Filtros Específicos", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFFF57F17))
+                                Text("Assine o Premium para criar regras baseadas nos valores da sua família.", color = Color.DarkGray, fontSize = 14.sp)
+                            }
+                        }
+                    }
+                }
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color(0xFFE2E8F0))
                 // Pin de segurança
                 Text("Segurança do Dispositivo", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.DarkGray)
 
@@ -306,82 +498,6 @@ fun ConfiguracoesScreen(codigoFilho: String, onVoltar: () -> Unit) {
                         }
                     )
                 }
-
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color(0xFFE2E8F0))
-
-                // Configurações de rigidez MOVIDO PARA BAIXO
-                Text("Nível de Rigidez da Inteligência Artificial", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.DarkGray)
-
-                OpcaoRigidezCard("Alta (Recomendado)", "Alerta sobre palavrões e jogos violentos. Foco em conteúdo infantil.", Color(0xFF4CAF50), nivelSelecionado == "ALTA") { salvarRegraIA("ALTA") }
-                OpcaoRigidezCard("Média", "Desconsidera jogos infantis e humor leve. Alerta sobre pornografia e violência explícita.", Color(0xFFFF9800), nivelSelecionado == "MEDIA") { salvarRegraIA("MEDIA") }
-                OpcaoRigidezCard("Baixa", "Desconsidera jogos violentos fictícios. Alerta apenas pornografia e crimes.", Color(0xFFF44336), nivelSelecionado == "BAIXA") { salvarRegraIA("BAIXA") }
-
-
-                Text("Filtros Personalizados da Família", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.DarkGray)
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text("Adicione temas específicos que o aplicativo deve bloquear com base nas regras da sua casa (ex: Futebol, Maquiagem, Susto).", color = Color.Gray, fontSize = 14.sp)
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // Campo de entrada e botão Add
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            OutlinedTextField(
-                                value = novaPalavra,
-                                onValueChange = { novaPalavra = it },
-                                modifier = Modifier.weight(1f),
-                                label = { Text("Ex: Câmera escondida") },
-                                singleLine = true
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Button(
-                                onClick = { adicionarPalavra() },
-                                modifier = Modifier.height(56.dp) // Alinha a altura do botão com o TextField
-                                    .padding(top = 8.dp), // Ajuste fino visual
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0))
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = "Adicionar", tint = Color.White)
-                            }
-                        }
-
-                        // Lista dinâmica em formato de "Chips"
-                        if (palavrasMonitoradas.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(16.dp))
-                            // O FlowRow permite que as "etiquetas" quebrem a linha automaticamente se a tela for pequena
-                            FlowRow(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                palavrasMonitoradas.forEach { palavra ->
-                                    InputChip(
-                                        selected = false,
-                                        onClick = { removerPalavra(palavra) },
-                                        label = { Text(palavra) },
-                                        trailingIcon = {
-                                            Icon(
-                                                Icons.Default.Close,
-                                                contentDescription = "Remover",
-                                                modifier = Modifier.size(16.dp),
-                                                tint = Color.Gray
-                                            )
-                                        },
-                                        colors = InputChipDefaults.inputChipColors(
-                                            containerColor = Color(0xFFF1F5F9), // Cinza bem clarinho
-                                            labelColor = Color(0xFF1E293B)
-                                        ),
-                                        border = null // Tira a borda para ficar mais "clean"
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
                 Spacer(modifier = Modifier.height(32.dp))
             }
         }
@@ -389,14 +505,24 @@ fun ConfiguracoesScreen(codigoFilho: String, onVoltar: () -> Unit) {
 }
 //checkbox das notificações
 @Composable
-fun ItemCheckbox(texto: String, estaMarcado: Boolean, onClick: () -> Unit) {
+fun ItemCheckbox(texto: String, estaMarcado: Boolean, isDesativado: Boolean = false,onClick: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().clickable { onClick() }.padding(vertical = 6.dp),
+        modifier = Modifier.fillMaxWidth().clickable(enabled = !isDesativado) { onClick() }.padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Checkbox(checked = estaMarcado, onCheckedChange = null, colors = CheckboxDefaults.colors(checkedColor = Color(0xFF1565C0)))
+        Checkbox(
+            checked = estaMarcado,
+            onCheckedChange = null,
+            enabled = !isDesativado,
+            colors = CheckboxDefaults.colors(checkedColor = Color(0xFF1565C0))
+        )
         Spacer(modifier = Modifier.width(12.dp))
-        Text(texto, fontSize = 16.sp, color = Color(0xFF1E293B), fontWeight = if (estaMarcado) FontWeight.Bold else FontWeight.Normal)
+        Text(
+            texto,
+            fontSize = 16.sp,
+            color = if (isDesativado) Color.LightGray else Color(0xFF1E293B),
+            fontWeight = if (estaMarcado) FontWeight.Bold else FontWeight.Normal
+        )
     }
 }
 //card rigidez

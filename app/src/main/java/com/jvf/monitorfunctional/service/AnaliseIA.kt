@@ -15,7 +15,8 @@ class AnaliseIA {
             tituloVideo: String,
             comentarios: String,
             nivelRigidez: String,
-            palavrasMonitoradas: List<String> = emptyList()
+            palavrasMonitoradas: List<String> = emptyList(),
+            palavrasPermitidas: List<String> = emptyList()
         ): ResultadoAnalise {
             val safetySettings = listOf(
                 SafetySetting(HarmCategory.HARASSMENT, BlockThreshold.ONLY_HIGH),
@@ -36,7 +37,7 @@ class AnaliseIA {
                 "ALTA" -> "Seja extremamente rigoroso. O conteúdo deve ser estritamente infantil (livre para todas as idades). Alerte qualquer palavrão, duplo sentido, armas, jogos violentos ou terror."
                 else -> "Seja rigoroso. O conteúdo deve ser adequado para crianças."
             }
-
+            //Bloqueios(blacklist)
             val regraPersonalizada = if (palavrasMonitoradas.isNotEmpty()) {
                 """
             ATENÇÃO - REGRA ESTRITA DA FAMÍLIA:
@@ -48,14 +49,33 @@ class AnaliseIA {
             3 - No campo "motivo", escreva explicitamente: "Alerta de monitoramento personalizado."
             """.trimIndent()
             } else {
-                "" // Se não tiver palavra, não vai ter nenhum acrescimo no prompt
+                ""
+            }
+
+            val regraExcecao = if (palavrasPermitidas.isNotEmpty()) {
+                """
+            ATENÇÃO - EXCEÇÕES PERMITIDAS DA FAMÍLIA:
+            O responsável autorizou expressamente o consumo de vídeos sobre os seguintes temas:
+            [ ${palavrasPermitidas.joinToString(", ")} ]
+            Se o vídeo for primariamente sobre qualquer um desses temas autorizados, você deve ignorar as regras de rigidez acima e classificá-lo como seguro.
+            Regra de ouro: A Lista Branca anula alertas de falsos positivos (como "sobrevivência" em Minecraft).
+            1 - Classifique como "seguro": "SIM"
+            2 - No campo "motivo", você pode colocar: "Conteúdo liberado nas exceções da família."
+            """.trimIndent()
+            } else {
+                ""
             }
 
             val prompt = """
-            Você é um assistente de controle parental que analisará conteúdos assistidos por crianças no app do Youtube.
+            Você é um assistente de controle parental que analisará conteúdos assistidos por crianças no app do Youtube. 
+            Abaixo você encontrará regras personalizadas que o responsável irá inserir manualmente, se for necessário corrija erros ortográficos se necessário.
             Nível de rigidez atual do responsável: "$nivelRigidez"
+            
             Regras de filtragem: $regrasParentais
+            
             $regraPersonalizada
+            
+            $regraExcecao
             
             Contexto do vídeo:
             Analise o vídeo com seguinte título: "$tituloVideo"
@@ -76,7 +96,6 @@ class AnaliseIA {
 
                 if (textoResposta.isEmpty()) {
                     Log.w("App_IA", "⚠ A IA retornou vazio para: $tituloVideo")
-                    // Se veio vazio, a IA avisa que é seguro para não travar o app
                     return ResultadoAnalise(true, "Análise automática indisponível (Erro na IA).")
                 }
 

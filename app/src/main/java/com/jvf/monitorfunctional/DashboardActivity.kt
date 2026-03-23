@@ -17,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateListOf
+import com.google.firebase.firestore.ListenerRegistration
 import com.jvf.monitorfunctional.ui.DashboardScreen
 class DashboardActivity : AppCompatActivity() {
     private lateinit var prefs: SharedPreferences
@@ -25,6 +26,11 @@ class DashboardActivity : AppCompatActivity() {
     private val listaDeVideosState = mutableStateListOf<LogVideoApp>()
     private var apelidoState by mutableStateOf("")
 
+    private var dataInicioFiltro: Long? = null
+    private var dataFimFiltro: Long? = null
+    private var listenerFirebase: ListenerRegistration? = null
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -32,14 +38,29 @@ class DashboardActivity : AppCompatActivity() {
 
         atualizarApelidoState()
         lerDadosDoFirebase()
-
+        val planoAtual = prefs.getString("tipo_plano", "FREE") ?: "FREE"
         // Inicio do Compose
         setContent {
             MaterialTheme {
                 DashboardScreen(
                     apelido = apelidoState,
+                    planoAtual = planoAtual,
                     listaVideos = listaDeVideosState,
                     onLimparClick = { confirmarLimpeza() },
+                    onFiltrarDatas = { inicio, fim ->
+                        dataInicioFiltro = inicio
+                        dataFimFiltro = fim
+                        if (inicio == null || fim == null) {
+                            Toast.makeText(
+                                this,
+                                "Filtro removido. Exibindo todo o histórico",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        } else {
+                            Toast.makeText(this, "Aplicando filtro...", Toast.LENGTH_SHORT).show()
+                        }
+                        lerDadosDoFirebase()
+                    }
                 )
             }
         }
@@ -66,6 +87,8 @@ class DashboardActivity : AppCompatActivity() {
             putLong("ponto_de_corte", agora)
     }
     Toast.makeText(this, "Histórico limpo!", Toast.LENGTH_SHORT).show()
+        dataInicioFiltro = null
+        dataFimFiltro = null
     lerDadosDoFirebase()
 }
 
@@ -78,20 +101,31 @@ class DashboardActivity : AppCompatActivity() {
             return
         }
 
+        listenerFirebase?.remove()
+
         val db = Firebase.firestore
-        db.collection("historico_parental")
+        var query = db.collection("historico_parental")
             .whereEqualTo("codigo_pareamento", codigoMonitorado)
-            .orderBy("timestamp", Query.Direction.DESCENDING)
-            .limit(50)
-            .addSnapshotListener { snapshots, e ->
 
-                if (e != null) {
-                    Log.w(TAG, "Erro de leitura no Firebase", e)
-                    return@addSnapshotListener
-                }
+        if (dataInicioFiltro != null && dataFimFiltro != null) {
+            query = query.whereGreaterThanOrEqualTo("timestamp", dataInicioFiltro!!)
+                .whereLessThanOrEqualTo("timestamp", dataFimFiltro!!)
+        }
 
-                if (snapshots != null) {
-                    val listaTemporaria = mutableListOf<LogVideoApp>()
+        query = query.orderBy("timestamp", Query.Direction.DESCENDING)
+
+        if (dataInicioFiltro == null) {
+            query = query.limit(50)
+        }
+
+        listenerFirebase = query.addSnapshotListener { snapshots, e ->
+            if (e != null) {
+                Log.w(TAG, "Erro de leitura no Firebase", e)
+                return@addSnapshotListener
+            }
+
+            if (snapshots != null) {
+                val listaTemporaria = mutableListOf<LogVideoApp>()
 
                     for (doc in snapshots) {
                         try {

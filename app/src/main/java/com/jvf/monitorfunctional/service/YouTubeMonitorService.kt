@@ -18,7 +18,6 @@ import java.net.URL
 import java.net.URLEncoder
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.Job
 @SuppressLint("AccessibilityPolicy")
 class YouTubeMonitorService : AccessibilityService() {
 
@@ -111,10 +110,14 @@ class YouTubeMonitorService : AccessibilityService() {
 
         Log.e(TAG, "Assistindo: $titulo")
 
+        val tempoInicioLatencia = System.currentTimeMillis()
+
+
         //busca na api do (fora da thread principal)
         CoroutineScope(Dispatchers.IO).launch {
             val comentariosConcatenados = analisarVideoSilenciosamente(titulo)
-            processarTituloComIA(titulo, comentariosConcatenados)
+            processarTituloComIA(titulo, comentariosConcatenados, tempoInicioLatencia)
+
         }
     }
 
@@ -123,7 +126,7 @@ class YouTubeMonitorService : AccessibilityService() {
     }
 
     // INTEGRAÇÃO IA E FIREBASE
-        private fun processarTituloComIA(titulo:String, comentarios: String){
+        private fun processarTituloComIA(titulo:String, comentarios: String, inicioLatencia: Long){
 
         val agora = System.currentTimeMillis()
         val ultimaVez = cacheVideosAnalisados[titulo] ?: 0L
@@ -147,6 +150,7 @@ class YouTubeMonitorService : AccessibilityService() {
 
                 var nivelRigidezAtual = "ALTA" // Nível padrão
                 var palavrasMonitoradas = listOf<String>()
+                var palavrasPermitidas = listOf<String>()
                 try {
                     if (codigoFilho != "SEM_CODIGO") {
                         val docRegra = bancoDeDados.collection("regras_parentais").document(codigoFilho).get().await()
@@ -157,6 +161,11 @@ class YouTubeMonitorService : AccessibilityService() {
                             if (palavrasSalvas != null) {
                                 palavrasMonitoradas = palavrasSalvas.map { it.toString() }
                             }
+
+                            val palavrasPermitidasSalvas = docRegra.get("palavras_permitidas") as? List<*>
+                            if (palavrasPermitidasSalvas != null) {
+                                palavrasPermitidas = palavrasPermitidasSalvas.map { it.toString() }
+                            }
                         }
                     }
                 } catch (e: Exception) {
@@ -164,8 +173,12 @@ class YouTubeMonitorService : AccessibilityService() {
                 }
 
                 val analisador = AnaliseIA()
-                val resultadoIA = analisador.verificarSeguranca(titulo, comentarios, nivelRigidezAtual, palavrasMonitoradas)
+                val resultadoIA = analisador.verificarSeguranca(titulo, comentarios, nivelRigidezAtual, palavrasMonitoradas, palavrasPermitidas)
                 Log.i(TAG, "IA: Seguro=${resultadoIA.ehSeguro} | Nível: $nivelRigidezAtual | Motivo: ${resultadoIA.detalhes}")
+
+                val tempoFimLatencia = System.currentTimeMillis()
+                val tempoTotalLatencia = tempoFimLatencia - inicioLatencia
+
 
                 val logVideo = hashMapOf(
                     "titulo" to titulo,
@@ -175,7 +188,8 @@ class YouTubeMonitorService : AccessibilityService() {
                     "motivo_ia" to resultadoIA.detalhes,
                     "dispositivo" to "Celular do Filho",
                     "codigo_pareamento" to codigoFilho,
-                    "nivel_rigidez_usado" to nivelRigidezAtual
+                    "nivel_rigidez_usado" to nivelRigidezAtual,
+                    "tempo-total-latencia" to tempoTotalLatencia
 
                 )
 
