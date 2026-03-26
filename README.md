@@ -38,17 +38,20 @@ O aplicativo foi construído seguindo as melhores práticas do ecossistema Andro
 
 * **UI/UX:** Totalmente construído com **Jetpack Compose** (Material Design 3). Componentes modulares, gerenciamento de estado (`StateHoisting`) e animações fluidas (`animateColorAsState`, `animateFloatAsState`).
 * **Backend & Database:** **Firebase Cloud Firestore** operando como "Única fonte da verdade". A sincronização bidirecional garante que se o plano (Free/Premium) for alterado no banco, a interface do usuário se reestrutura instantaneamente sem necessidade de recarregar a tela.
-* **Inteligência Artificial:** Integração com LLMs para processamento de linguagem natural e inferência de segurança baseada no título e contexto extraído dos vídeos.
+*Inteligência Artificial & Prompt Engineering:** Integração com LLMs para processamento de linguagem natural. Utilização de engenharia de prompts avançada para injetar regras absolutas de exceção e bloqueio baseadas no usuário.
+* **Captura de Dados:** Uso de `AccessibilityService` para leitura de nós de tela (ViewNodes) no YouTube, capturando títulos e pesquisas de forma invisível.
 * **Persistência Local:** Uso estratégico do `SharedPreferences` para cache de códigos de vinculação e estado de planos, otimizando as requisições ao banco.
 
 ---
 
 ## Telas do Aplicativo
 
-1. **Dashboard geral (Relatório):** Exibe o termômetro de segurança, o filtro premium de calendário e a lista expansível de vídeos (`LazyColumn`) com os motivos detalhados da IA.
-2. **Configurações:** Painel de controle do responsável, contendo regras da IA, filtros de notificação e o funil de conversão (Upsell) para regras personalizadas.
-3. **Relatório de busca** Tela que exibe as últimas bucas realizadas pelo monitorado no app do Youtube.
-4. **Paywall (Premium):** Tela de vendas otimizada, destacando os benefícios do plano pago e simulando o gateway de assinatura.
+1. **Painel de Controle (Menu):** Central de comando do responsável com acesso rápido aos relatórios, status de monitoramento e atalhos de assinatura.
+2. **Relatório de Vídeos:** Exibe o termômetro de segurança, o filtro premium de calendário e a lista de vídeos assistidos com motivos detalhados gerados pela IA.
+3. **Score da Semana:** Gráfico gerencial (`LinearProgressIndicator`) agrupando os dados de consumo da semana por categoria.
+4. **Relatório de Buscas:** Tela que exibe os últimos termos pesquisados pelo monitorado na barra de buscas do YouTube.
+5. **Configurações:** Painel contendo regras de rigidez, filtros de notificação, gerenciamento de PIN e a configuração das listas de exceções (Upsell).
+6. **Paywall (Premium):** Tela de vendas otimizada, destacando os benefícios do plano pago e simulando o gateway de assinatura.
 
 ---
 
