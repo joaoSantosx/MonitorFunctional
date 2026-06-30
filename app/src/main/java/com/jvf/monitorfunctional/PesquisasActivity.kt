@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import java.util.*
+import android.util.Log
 
 data class HistoricoPesquisa(val termo: String, val dataHora: Date)
 
@@ -142,7 +143,9 @@ fun PesquisasScreen(codigoFilho: String, onVoltar: () -> Unit) {
             .orderBy("timestamp", Query.Direction.DESCENDING)
             .limit(100)
             .addSnapshotListener { snapshot, erro ->
-                if (erro != null) { carregando = false; return@addSnapshotListener }
+                if (erro != null) {
+                    Log.e("Aware Kids", "Erro crítico na query do servidor", erro)
+                    carregando = false; return@addSnapshotListener }
                 if (snapshot != null) {
                     listaPesquisas = snapshot.documents.mapNotNull { doc ->
                         val termo = doc.getString("termo") ?: return@mapNotNull null

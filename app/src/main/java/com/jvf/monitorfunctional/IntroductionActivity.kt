@@ -53,6 +53,7 @@ class IntroductionActivity: AppCompatActivity() {
 
     private fun irParaProximaTela() {
         startActivity(Intent(this, MainActivity::class.java))
+        finish()
     }
 }
 
@@ -79,7 +80,7 @@ fun IntroductionScreen(onFinalizar: () -> Unit) {
                 when (tela) {
                     1 -> ConteudoPagina(
                         icone = Icons.Default.Face,
-                        titulo = "Bem-vindo ao\nKidsSafeTube",
+                        titulo = "Bem-vindo ao\nAware Kids",
                         descricao = "O app monitor parental inteligente projetado para garantir a segurança digital do seu filho no YouTube."
                     )
                     2 -> ConteudoPagina(

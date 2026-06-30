@@ -38,12 +38,14 @@ class DashboardActivity : AppCompatActivity() {
 
         atualizarApelidoState()
         lerDadosDoFirebase()
+        val codigoMonitorado = prefs.getString("codigo_monitorado", "") ?: ""
         val planoAtual = prefs.getString("tipo_plano", "FREE") ?: "FREE"
         // Inicio do Compose
         setContent {
             MaterialTheme {
                 DashboardScreen(
                     apelido = apelidoState,
+                    codigoMonitorado = codigoMonitorado,
                     planoAtual = planoAtual,
                     listaVideos = listaDeVideosState,
                     onLimparClick = { confirmarLimpeza() },

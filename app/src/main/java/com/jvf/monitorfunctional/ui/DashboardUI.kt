@@ -11,8 +11,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,7 +23,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.text.SimpleDateFormat
-import java.util.*
 import android.widget.Toast
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.animation.core.tween
@@ -33,7 +30,11 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.animation.animateColorAsState
-
+import com.google.firebase.firestore.firestore
+import com.google.firebase.Firebase
+import androidx.compose.material.icons.filled.*
+import java.util.Date
+import java.util.Locale
 
 private object DashColors {
     val azulEscuro     = Color(0xFF0D47A1)
@@ -66,6 +67,7 @@ private object DashColors {
 @Composable
 fun DashboardScreen(
     apelido: String,
+    codigoMonitorado: String,
     planoAtual: String,
     listaVideos: List<LogVideoApp>,
     onLimparClick: () -> Unit,
@@ -106,6 +108,10 @@ fun DashboardScreen(
                 ScoreCard(listaVideos = listaVideos)
             }
         }
+
+        Spacer(modifier = Modifier.height(12.dp))
+        //Contador limite vídeo
+        ContadorFreemiumCard(codigoFilho = codigoMonitorado)
 
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -175,6 +181,148 @@ fun DashboardScreen(
                     )
                 },
                 showModeToggle = false
+            )
+        }
+    }
+}
+
+@Composable
+fun ContadorFreemiumCard(codigoFilho: String) {
+    val db = Firebase.firestore
+    var contagemHoje by remember { mutableStateOf(0) }
+    var planoAtual by remember { mutableStateOf("FREE") }
+
+    // Escuta o banco de dados em tempo real
+    LaunchedEffect(codigoFilho) {
+        if (codigoFilho.isEmpty()) return@LaunchedEffect
+
+        db.collection("regras_parentais").document(codigoFilho)
+            .addSnapshotListener { snapshot, erro ->
+                if (erro != null) return@addSnapshotListener
+
+                if (snapshot != null && snapshot.exists()) {
+                    planoAtual = snapshot.getString("plano") ?: "FREE"
+
+                    val formatoData = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+                    val hojeStr = formatoData.format(java.util.Date())
+                    val dataUltimo = snapshot.getString("data_ultimo_video") ?: ""
+
+                    contagemHoje = if (dataUltimo == hojeStr) {
+                        snapshot.getLong("contagem_videos_hoje")?.toInt() ?: 0
+                    } else {
+                        0
+                    }
+                }
+            }
+    }
+
+    // === CARD PREMIUM ===
+    if (planoAtual == "PREMIUM") {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFE6FFF9)),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF14B8A6))
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.VerifiedUser,
+                    contentDescription = "Premium",
+                    tint = Color(0xFF0D9488)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        text = "Proteção Ilimitada",
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF134E4A),
+                        fontSize = 14.sp
+                    )
+                    Text(
+                        text = "O plano Premium está ativo neste dispositivo.",
+                        color = Color(0xFF0F766E),
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        }
+        return // Para a execução aqui se for Premium
+    }
+
+    // === CARD FREE ===
+    val limite = 40
+    val progresso = (contagemHoje.toFloat() / limite.toFloat()).coerceIn(0f, 1f)
+    val atingiuLimite = contagemHoje >= limite
+
+    val progressoAnimado by animateFloatAsState(
+        targetValue = progresso,
+        animationSpec = tween(durationMillis = 1000), label = "progresso_freemium"
+    )
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Cota Diária (Plano Free)",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = Color(0xFF1E293B)
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (atingiuLimite) Color(0xFFFEE2E2) else Color(0xFFF1F5F9)
+                ) {
+                    Text(
+                        text = "$contagemHoje / $limite",
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (atingiuLimite) Color(0xFFDC2626) else Color(0xFF64748B),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        fontSize = 12.sp
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            LinearProgressIndicator(
+                progress = { progressoAnimado },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(8.dp)
+                    .clip(RoundedCornerShape(4.dp)),
+                color = if (atingiuLimite) Color(0xFFEF4444) else Color(0xFF1565C0),
+                trackColor = Color(0xFFE2E8F0)
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = if (atingiuLimite)
+                    "Limite atingido! O monitoramento está pausado. Faça o upgrade para continuar protegendo."
+                else
+                    "Vídeos monitorados hoje pela IA. A contagem reseta à meia-noite.",
+                color = if (atingiuLimite) Color(0xFFDC2626) else Color(0xFF94A3B8),
+                fontSize = 11.sp,
+                lineHeight = 14.sp
             )
         }
     }

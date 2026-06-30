@@ -1,61 +1,94 @@
 package com.jvf.monitorfunctional
 
 import android.Manifest
-import android.os.Build
-import android.content.pm.PackageManager
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
+import android.app.Activity
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import android.util.Log
+import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.google.firebase.Firebase
-import com.google.firebase.firestore.firestore
-import com.google.firebase.messaging.messaging
-import android.util.Log
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Search
-import androidx.core.content.edit
-import androidx.compose.material.icons.filled.Lock
-import com.jvf.monitorfunctional.ui.PremiumActivity
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.PieChart
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.core.content.edit
+import com.google.firebase.Firebase
+import com.google.firebase.firestore.firestore
+import com.google.firebase.messaging.messaging
+import com.jvf.monitorfunctional.ui.PremiumActivity
 
+private object MenuColors {
+    val azulPrimario = Color(0xFF1565C0)
+    val cinzaFundo = Color(0xFFF0F4F8)
+    val branco = Color.White
+
+    val gradienteTopBar = Brush.linearGradient(
+        colors = listOf(Color(0xFF0D47A1), Color(0xFF1565C0))
+    )
+    val azulIconeBg = Color(0xFFEFF6FF)
+    val azulIcone = Color(0xFF1565C0)
+    val tealIconeBg = Color(0xFFE6FFF9)
+    val tealIcone = Color(0xFF0D9488)
+    val roxoIconeBg = Color(0xFFF3F0FF)
+    val roxoIcone = Color(0xFF7C3AED)
+    val verdeIconeBg = Color(0xFFF0FDF4)
+    val verdeIcone = Color(0xFF16A34A)
+    val cinzaIconeBg = Color(0xFFF8FAFC)
+    val cinzaIcone = Color(0xFF94A3B8)
+
+    val laranjaIconeBg = Color(0xFFFFF7ED)
+    val laranjaIcone = Color(0xFFEA580C)
+
+    // Premium
+    val amareloFundo = Color(0xFFFFFBEB)
+    val amareloBorda = Color(0xFFFDE68A)
+    val amareloTexto = Color(0xFF92400E)
+
+    val textoPrimario = Color(0xFF1E293B)
+    val textoMuted = Color(0xFF94A3B8)
+    val bordaCard = Color(0xFFE2E8F0)
+    val chevronCor = Color(0xFFCBD5E1)
+} // ⬅️ A CHAVE DE FECHAMENTO FOI ADICIONADA AQUI
 
 class MenuActivity : AppCompatActivity() {
 
@@ -83,6 +116,14 @@ class MenuActivity : AppCompatActivity() {
                 onVerRelatorio = {
                     if (apelidoState.value.isNotEmpty()) {
                         startActivity(Intent(this, DashboardActivity::class.java))
+                    } else {
+                        Toast.makeText(this, "Nenhum dispositivo vinculado ainda!", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onVerScoreSemanal = {
+                    if (apelidoState.value.isNotEmpty()) {
+                        startActivity(Intent(this, ScoreActivity::class.java))
+                        Toast.makeText(this, "Abrindo Score da Semana...", Toast.LENGTH_SHORT).show()
                     } else {
                         Toast.makeText(this, "Nenhum dispositivo vinculado ainda!", Toast.LENGTH_SHORT).show()
                     }
@@ -133,26 +174,58 @@ class MenuActivity : AppCompatActivity() {
             .setTitle("Vincular Dispositivo")
             .setMessage("Insira o código do dependente e escolha um apelido:")
             .setView(layout)
-            .setPositiveButton("Vincular") { _, _ ->
-                val codigo = inputCodigo.text.toString().trim().uppercase()
-                val apelido = inputApelido.text.toString().trim()
-                if (codigo.isNotEmpty() && apelido.isNotEmpty()) {
-                    prefs.edit {
-                        putString("codigo_monitorado", codigo)
-                        putString("apelido_monitorado", apelido)
-                    }
-                    apelidoState.value = apelido
-                    Firebase.messaging.subscribeToTopic("alerta_$codigo")
-                        .addOnCompleteListener { task ->
-                            val msg = if (task.isSuccessful) "Vinculado com sucesso e alertas ativados!"
-                            else "Vinculado, mas falha ao ativar alertas."
-                            Toast.makeText(this@MenuActivity, msg, Toast.LENGTH_SHORT).show()
+            .setPositiveButton("Vincular", null)
+            .setNegativeButton("Cancelar", null)
+            .create()
+            .apply {
+                setOnShowListener { dialog ->
+                    val button = (dialog as AlertDialog).getButton(AlertDialog.BUTTON_POSITIVE)
+                    button.setOnClickListener {
+                        val codigo = inputCodigo.text.toString().trim().uppercase()
+                        val apelido = inputApelido.text.toString().trim()
+
+                        if (codigo.isNotEmpty() && apelido.isNotEmpty()) {
+
+                            button.isEnabled = false
+                            button.text = "Validando..."
+
+                            Firebase.firestore.collection("dispositivos_ativos")
+                                .document(codigo)
+                                .get()
+                                .addOnSuccessListener { documento ->
+                                    if (documento.exists()) {
+                                        prefs.edit {
+                                            putString("codigo_monitorado", codigo)
+                                            putString("apelido_monitorado", apelido)
+                                        }
+                                        apelidoState.value = apelido
+
+                                        Firebase.messaging.subscribeToTopic("alerta_$codigo")
+                                            .addOnCompleteListener { task ->
+                                                val msg = if (task.isSuccessful) "Dispositivo vinculado e validado com sucesso!"
+                                                else "Vinculado, mas falha ao ativar notificações."
+                                                Toast.makeText(this@MenuActivity, msg, Toast.LENGTH_SHORT).show()
+                                            }
+
+                                        dialog.dismiss()
+                                    } else {
+                                        Toast.makeText(this@MenuActivity, "Código inválido! Verifique o celular do dependente.", Toast.LENGTH_LONG).show()
+                                        button.isEnabled = true
+                                        button.text = "Vincular"
+                                    }
+                                }
+                                .addOnFailureListener {
+                                    Toast.makeText(this@MenuActivity, "Erro ao conectar com o servidor.", Toast.LENGTH_SHORT).show()
+                                    button.isEnabled = true
+                                    button.text = "Vincular"
+                                }
+
+                        } else {
+                            Toast.makeText(this@MenuActivity, "Preencha os dois campos!", Toast.LENGTH_SHORT).show()
                         }
-                } else {
-                    Toast.makeText(this@MenuActivity, "Preencha os dois campos!", Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
-            .setNegativeButton("Cancelar", null)
             .show()
     }
 
@@ -183,42 +256,13 @@ class MenuActivity : AppCompatActivity() {
     }
 }
 
-private object MenuColors {
-    val azulPrimario   = Color(0xFF1565C0)
-    val cinzaFundo     = Color(0xFFF0F4F8)
-    val branco         = Color.White
-
-    val gradienteTopBar = Brush.linearGradient(
-        colors = listOf(Color(0xFF0D47A1), Color(0xFF1565C0))
-    )
-    val azulIconeBg    = Color(0xFFEFF6FF)
-    val azulIcone      = Color(0xFF1565C0)
-    val tealIconeBg    = Color(0xFFE6FFF9)
-    val tealIcone      = Color(0xFF0D9488)
-    val roxoIconeBg    = Color(0xFFF3F0FF)
-    val roxoIcone      = Color(0xFF7C3AED)
-    val verdeIconeBg   = Color(0xFFF0FDF4)
-    val verdeIcone     = Color(0xFF16A34A)
-    val cinzaIconeBg   = Color(0xFFF8FAFC)
-    val cinzaIcone     = Color(0xFF94A3B8)
-
-    // Premium
-    val amareloFundo   = Color(0xFFFFFBEB)
-    val amareloBorda   = Color(0xFFFDE68A)
-    val amareloTexto   = Color(0xFF92400E)
-
-    val textoPrimario  = Color(0xFF1E293B)
-    val textoMuted     = Color(0xFF94A3B8)
-    val bordaCard      = Color(0xFFE2E8F0)
-    val chevronCor     = Color(0xFFCBD5E1)
-}
-
 //Tela
 @Composable
 fun MenuScreen(
     apelidoAtual: String,
     planoAtual: String,
     onVerRelatorio: () -> Unit,
+    onVerScoreSemanal: () -> Unit,
     onVerGrafico: () -> Unit,
     onVerPesquisas: () -> Unit,
     onVincularNovo: () -> Unit,
@@ -249,6 +293,15 @@ fun MenuScreen(
             titulo = "Relatório de Vídeos",
             subtitulo = "Histórico de conteúdo assistido",
             onClick = onVerRelatorio
+        )
+
+        MenuCard(
+            iconeBg = MenuColors.laranjaIconeBg,
+            iconeColor = MenuColors.laranjaIcone,
+            icone = Icons.Default.PieChart,
+            titulo = "Score Semanal",
+            subtitulo = "Resumo percentual de segurança",
+            onClick = onVerScoreSemanal
         )
 
         MenuCardPremium(
@@ -412,7 +465,6 @@ private fun DevicePill(apelido: String) {
     }
 }
 
-
 @Composable
 private fun MenuSectionTitle(titulo: String) {
     Text(
@@ -424,7 +476,6 @@ private fun MenuSectionTitle(titulo: String) {
         modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)
     )
 }
-
 
 @Composable
 private fun MenuCard(
@@ -503,11 +554,11 @@ private fun MenuCardPremium(
     subtitulo: String,
     onClick: () -> Unit
 ) {
-    val fundoCor   = if (isPremium) MenuColors.branco else MenuColors.amareloFundo
-    val bordaCor   = if (isPremium) MenuColors.bordaCard else MenuColors.amareloBorda
-    val iconeBg    = if (isPremium) MenuColors.tealIconeBg else MenuColors.cinzaIconeBg
+    val fundoCor = if (isPremium) MenuColors.branco else MenuColors.amareloFundo
+    val bordaCor = if (isPremium) MenuColors.bordaCard else MenuColors.amareloBorda
+    val iconeBg = if (isPremium) MenuColors.tealIconeBg else MenuColors.cinzaIconeBg
     val iconeColor = if (isPremium) MenuColors.tealIcone else MenuColors.cinzaIcone
-    val tituloCor  = if (isPremium) MenuColors.textoPrimario else MenuColors.textoMuted
+    val tituloCor = if (isPremium) MenuColors.textoPrimario else MenuColors.textoMuted
 
     Card(
         modifier = Modifier
@@ -536,7 +587,7 @@ private fun MenuCardPremium(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Default.BarChart, // placeholder — trocar por ícone de gráfico
+                    imageVector = Icons.Default.BarChart,
                     contentDescription = null,
                     tint = iconeColor,
                     modifier = Modifier.size(22.dp)

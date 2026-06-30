@@ -22,7 +22,7 @@ import kotlinx.coroutines.tasks.await
 class YouTubeMonitorService : AccessibilityService() {
 
     private val youtubeApiKey = BuildConfig.youtube_api_key
-    private val TAG = "Aware Kids"
+    private val TAG = "Aware_Kids"
     private var ultimoTituloCapturado: String? = null
 
     private var ultimaPesquisaCapturada: String? = null
@@ -30,13 +30,55 @@ class YouTubeMonitorService : AccessibilityService() {
     private val cacheVideosAnalisados = mutableMapOf<String, Long>()
     private val cachePesquisas = mutableMapOf<String, Long>()
 
+    private var isScreenOn = true
+    private var screenReceiver: android.content.BroadcastReceiver? = null
+
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         Log.i(TAG, "=== Monitor Iniciado: Detectando vídeo em reprodução ===")
+
+        val filter = android.content.IntentFilter().apply() {
+            addAction(android.content.Intent.ACTION_SCREEN_ON)
+            addAction(android.content.Intent.ACTION_SCREEN_OFF)
+        }
+
+        screenReceiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(
+                context: android.content.Context?,
+                intent: android.content.Intent?
+            ) {
+                when (intent?.action) {
+                    android.content.Intent.ACTION_SCREEN_OFF -> {
+                        isScreenOn = false
+                        Log.d(TAG, "Tela apagada: Monitoramento pausado para poupar bateria")
+                        ultimoTituloCapturado = null
+                        ultimaPesquisaCapturada = null
+                    }
+                    android.content.Intent.ACTION_SCREEN_ON ->{
+                        isScreenOn = true
+                        Log.d(TAG, "Tela Ligada: Reativando monitor")
+                }
+            }
+        }
+    }
+
+    registerReceiver(screenReceiver, filter)
+}
+    override fun onDestroy(){
+        super.onDestroy()
+        try {
+            if(screenReceiver != null){
+                unregisterReceiver(screenReceiver)
+                Log.i(TAG, "=== Monitor Encerrado: Receptor de bateria removido com sucesso ===")
+            }
+        } catch (e: Exception){
+            Log.e(TAG, "Erro ao remover receptor de tela:", e)
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (!isScreenOn) return
         if (event == null) return
 
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
@@ -46,9 +88,12 @@ class YouTubeMonitorService : AccessibilityService() {
         val rootNode = rootInActiveWindow ?: return
 
 
-       //Defesa contra crianças desativando o acessibility service
+        //Defesa contra crianças desativando o acessibility service
         val pacoteAtual = event.packageName?.toString() ?: ""
-        if (pacoteAtual.contains("settings") || pacoteAtual.contains("config") || pacoteAtual.contains("accessibility")) {
+        if (pacoteAtual.contains("settings") || pacoteAtual.contains("config") || pacoteAtual.contains(
+                "accessibility"
+            )
+        ) {
 
             Log.e("Aware Kids_DEFESA", "!O usuário abriu as configurações! Pacote: $pacoteAtual")
 
@@ -58,14 +103,21 @@ class YouTubeMonitorService : AccessibilityService() {
             Log.e("Aware Kids_DEFESA", "A proteção está ativa no banco local? $protecaoAtiva")
 
             if (protecaoAtiva) {
-                val estaNaTelaDeDesativar = procurarTextoNaTela(rootNode, "Monitor Parental")
+                val estaNaTelaDeDesativar = procurarTextoNaTela(rootNode, "Monitor Aware Kids")
 
-                Log.e("Aware Kids_DEFESA", "O nome do serviço apareceu na tela? $estaNaTelaDeDesativar")
+                Log.e(
+                    "Aware Kids_DEFESA",
+                    "O nome do serviço apareceu na tela? $estaNaTelaDeDesativar"
+                )
 
                 if (estaNaTelaDeDesativar) {
                     Log.e("Aware Kids_DEFESA", " ENCERRANDO tela de configurações!")
                     performGlobalAction(GLOBAL_ACTION_HOME)
-                    android.widget.Toast.makeText(applicationContext, "Área restrita aos responsáveis.", android.widget.Toast.LENGTH_SHORT).show()
+                    android.widget.Toast.makeText(
+                        applicationContext,
+                        "Área restrita aos responsáveis.",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
                     return
                 }
             }
@@ -89,10 +141,10 @@ class YouTubeMonitorService : AccessibilityService() {
                 } else {
                     ultimaPesquisaCapturada = textoPesquisado
                     cachePesquisas[textoPesquisado] = agora
-                    Log.w(TAG, "🕵️‍♂️ Pesquisa do usuário localizada: $textoPesquisado")
+                    Log.w(TAG, "Pesquisa do usuário localizada: $textoPesquisado")
                     salvarPesquisaNoFirebase(textoPesquisado)
 
-                    if (cachePesquisas.size > 100){
+                    if (cachePesquisas.size > 100) {
                         cachePesquisas.clear()
                         Log.i(TAG, "Limpeza de cache de pesquisas realizada com sucesso")
                     }
@@ -112,10 +164,8 @@ class YouTubeMonitorService : AccessibilityService() {
 
         val tempoInicioLatencia = System.currentTimeMillis()
 
-
-        //busca na api do (fora da thread principal)
         CoroutineScope(Dispatchers.IO).launch {
-            val comentariosConcatenados = analisarVideoSilenciosamente(titulo)
+            val comentariosConcatenados = buscarIDVideoSilenciosamente(titulo)
             processarTituloComIA(titulo, comentariosConcatenados, tempoInicioLatencia)
 
         }
@@ -126,11 +176,11 @@ class YouTubeMonitorService : AccessibilityService() {
     }
 
     // INTEGRAÇÃO IA E FIREBASE
-        private fun processarTituloComIA(titulo:String, comentarios: String, inicioLatencia: Long){
+    private fun processarTituloComIA(titulo: String, videoId: String, inicioLatencia: Long) {
 
         val agora = System.currentTimeMillis()
         val ultimaVez = cacheVideosAnalisados[titulo] ?: 0L
-        if ((agora - ultimaVez) < (5 * 60 * 1000)){
+        if ((agora - ultimaVez) < (5 * 60 * 1000)) {
             return
         }
         cacheVideosAnalisados[titulo] = agora
@@ -140,10 +190,10 @@ class YouTubeMonitorService : AccessibilityService() {
             Log.i(TAG, "Limpeza de cache de videos realizada (Prevenção de Memória)")
         }
 
-        Log.e(TAG, "Novo título capturado: $titulo - Enviando para anaálise...")
+        Log.e(TAG, "Novo título capturado: $titulo - Enviando para análise...")
 
-        CoroutineScope(Dispatchers.IO).launch{
-            try{
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
                 val prefs = applicationContext.getSharedPreferences("MonitorPrefs", MODE_PRIVATE)
                 val codigoFilho = prefs.getString("codigo_filho", "SEM_CODIGO") ?: "SEM_CODIGO"
                 val bancoDeDados = Firebase.firestore
@@ -151,10 +201,14 @@ class YouTubeMonitorService : AccessibilityService() {
                 var nivelRigidezAtual = "ALTA" // Nível padrão
                 var palavrasMonitoradas = listOf<String>()
                 var palavrasPermitidas = listOf<String>()
+                var planoAtual = "FREE"
                 try {
                     if (codigoFilho != "SEM_CODIGO") {
-                        val docRegra = bancoDeDados.collection("regras_parentais").document(codigoFilho).get().await()
+                        val docRegra =
+                            bancoDeDados.collection("regras_parentais").document(codigoFilho).get()
+                                .await()
                         if (docRegra.exists()) {
+                            planoAtual = docRegra.getString("plano") ?: "FREE"
                             nivelRigidezAtual = docRegra.getString("nivel") ?: "ALTA"
 
                             val palavrasSalvas = docRegra.get("palavras_monitoradas") as? List<*>
@@ -162,24 +216,68 @@ class YouTubeMonitorService : AccessibilityService() {
                                 palavrasMonitoradas = palavrasSalvas.map { it.toString() }
                             }
 
-                            val palavrasPermitidasSalvas = docRegra.get("palavras_permitidas") as? List<*>
+                            val palavrasPermitidasSalvas =
+                                docRegra.get("palavras_permitidas") as? List<*>
                             if (palavrasPermitidasSalvas != null) {
                                 palavrasPermitidas = palavrasPermitidasSalvas.map { it.toString() }
                             }
+
+                            if (planoAtual != "PREMIUM"){
+                                val formatoData = java.text.SimpleDateFormat("yyy-MM-dd", java.util.Locale.getDefault())
+                                val hojeStr = formatoData.format(java.util.Date())
+
+                                val dataUltimo = docRegra.getString("data_ultimo_video") ?: ""
+                                var contagemHoje = docRegra.getLong("contagem_videos_hoje") ?: 0L
+
+                              //mudou de dia zera o contador
+                              if (dataUltimo != hojeStr){
+                                  contagemHoje = 0
+                              }
+
+                                if (contagemHoje >= 40) {
+                                    Log.w(TAG, "Limite diário Free atingido! Abortando análise.")
+
+                                    val ultimoAviso = prefs.getString("data_aviso_limite", "")
+                                    if (ultimoAviso != hojeStr) {
+                                        val logLimite = hashMapOf(
+                                            "titulo" to "Limite diário de proteção atingido!",
+                                            "data_hora" to Date(),
+                                            "timestamp" to System.currentTimeMillis(),
+                                            "seguro" to false,
+                                            "motivo_ia" to "O plano FREE permite analisar apenas 40 vídeos por dia e o limite foi excedido. O monitoramento está pausado, faça o upgrade para o plano Premium para ter proteção 24 horas.",
+                                            "dispositivo" to "Sistema Aware Kids",
+                                            "codigo_pareamento" to codigoFilho,
+                                            "nivel_rigidez_usado" to "BLOQUEIO_FREE"
+                                        )
+                                        bancoDeDados.collection("historico_parentais").add(logLimite)
+                                        prefs.edit().putString("data_aviso_limite", hojeStr).apply()
+                                    }
+                                    return@launch
+                                }
+                            }
                         }
                     }
+
+
                 } catch (e: Exception) {
                     Log.w(TAG, "⚠ Erro ao buscar regra, usando padrões.", e)
                 }
 
                 val analisador = AnaliseIA()
-                val resultadoIA = analisador.verificarSeguranca(titulo, comentarios, nivelRigidezAtual, palavrasMonitoradas, palavrasPermitidas)
-                Log.i(TAG, "IA: Seguro=${resultadoIA.ehSeguro} | Nível: $nivelRigidezAtual | Motivo: ${resultadoIA.detalhes}")
+                val resultadoIA = analisador.verificarSeguranca(
+                    titulo,
+                    videoId,
+                    nivelRigidezAtual,
+                    palavrasMonitoradas,
+                    palavrasPermitidas
+                )
+                Log.i(
+                    TAG,
+                    "IA: Seguro=${resultadoIA.ehSeguro} | Nível: $nivelRigidezAtual | Motivo: ${resultadoIA.detalhes}"
+                )
 
                 val tempoFimLatencia = System.currentTimeMillis()
                 val tempoTotalLatencia = tempoFimLatencia - inicioLatencia
-
-
                 val logVideo = hashMapOf(
                     "titulo" to titulo,
                     "data_hora" to Date(),
@@ -209,16 +307,17 @@ class YouTubeMonitorService : AccessibilityService() {
         }
     }
 
-    //INTEGRAÇÃO YOUTUBE DATA API
-    private suspend fun analisarVideoSilenciosamente(titulo: String) : String {
+
+    //Busca apenas o ID para delegar a carga de rede ao Node.js
+    private suspend fun buscarIDVideoSilenciosamente(titulo: String): String {
         return withContext(Dispatchers.IO) {
-            var resultadoComentarios = ""
+            var videoIdEncontrado = ""
             try {
                 Log.i(TAG, "Buscando id na API para o título...")
 
-                //Pegar ID pelo título
                 val tituloFormatado = URLEncoder.encode(titulo, "UTF-8")
-                val urlBusca = URL("https://www.googleapis.com/youtube/v3/search?part=id&q=$tituloFormatado&type=video&key=$youtubeApiKey&maxResults=1")
+                val urlBusca =
+                    URL("https://www.googleapis.com/youtube/v3/search?part=id&q=$tituloFormatado&type=video&key=$youtubeApiKey&maxResults=1")
 
                 val conexaoBusca = urlBusca.openConnection() as HttpURLConnection
                 conexaoBusca.requestMethod = "GET"
@@ -229,9 +328,12 @@ class YouTubeMonitorService : AccessibilityService() {
                     val items = jsonBusca.getJSONArray("items")
 
                     if (items.length() > 0) {
-                        val videoId = items.getJSONObject(0).getJSONObject("id").getString("videoId")
-                        Log.i(TAG, " Vídeo encontrado na API, id: $videoId")
-                        resultadoComentarios = buscarComentarios(videoId)
+                        videoIdEncontrado =
+                            items.getJSONObject(0).getJSONObject("id").getString("videoId")
+                        Log.i(
+                            TAG,
+                            " Vídeo encontrado na API, id delegando comentários ao servidor: $videoIdEncontrado"
+                        )
                     } else {
                         Log.w(TAG, " Nenhum vídeo correspondente encontrado na API.")
                     }
@@ -244,66 +346,23 @@ class YouTubeMonitorService : AccessibilityService() {
                 Log.e(TAG, "Erro crítico ao consultar API do YouTube", e)
             }
 
-            return@withContext resultadoComentarios
+            return@withContext videoIdEncontrado
         }
     }
 
-    private fun buscarComentarios(videoId: String) : String {
-        val listaDeComentarios = mutableListOf<String>()
-        try {
-            val urlComentarios = URL("https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&videoId=$videoId&textFormat=plainText&key=$youtubeApiKey&maxResults=5")
-            val conexaoComentarios = urlComentarios.openConnection() as HttpURLConnection
-            conexaoComentarios.requestMethod = "GET"
-
-            when (conexaoComentarios.responseCode) {
-                200 -> {
-                    val respostaComentarios = conexaoComentarios.inputStream.bufferedReader().readText()
-                    val jsonComentarios = JSONObject(respostaComentarios)
-                    val items = jsonComentarios.getJSONArray("items")
-
-                    if (items.length() == 0) {
-                        Log.d(TAG, "Vídeo não possui comentários.")
-                        return ""
-                    }
-
-                    for (i in 0 until items.length()) {
-                        val comentarioObjeto = items.getJSONObject(i)
-                            .getJSONObject("snippet")
-                            .getJSONObject("topLevelComment")
-                            .getJSONObject("snippet")
-
-                        val texto = comentarioObjeto.getString("textDisplay")
-                        listaDeComentarios.add(texto.replace("\n", " "))
-                        Log.d(TAG, " Comentário: $texto")
-                    }
-                }
-                403 -> {
-                    Log.w(TAG, "⚠ Comentários desativados para este vídeo (possível conteúdo infantil).")
-                }
-                else -> {
-                    Log.e(TAG, "Erro na API de comentários: Código ${conexaoComentarios.responseCode}")
-                }
-            }
-            conexaoComentarios.disconnect()
-        } catch (e: Exception) {
-            Log.e(TAG, "Erro ao buscar comentários", e)
-        }
-        return listaDeComentarios.joinToString(separator = " | ")
-
-    }
-
-    //DETECÇÃO DE TELA DE VÍDEO
+    //Detecção de tela de vídeo
     private fun estaNaTelaDeReproducao(root: AccessibilityNodeInfo): Boolean {
-        val watchPanel = root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/watch_panel")
-        val watchList = root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/watch_list")
+        val watchPanel =
+            root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/watch_panel")
+        val watchList =
+            root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/watch_list")
         return watchPanel.isNotEmpty() || watchList.isNotEmpty()
     }
 
-    // CAPTURA DO TÍTULO REAL
-
+    //Captura do título
     private fun capturarTituloAtual(root: AccessibilityNodeInfo): String? {
-        val listaTitulos = root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/title")
-
+        val listaTitulos =
+            root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/title")
         for (node in listaTitulos) {
             val classe = node.className?.toString() ?: ""
             val texto = node.text?.toString()
@@ -311,20 +370,22 @@ class YouTubeMonitorService : AccessibilityService() {
                 return texto.trim()
             }
         }
-
         return null
     }
+
     // Defesa para varrer texto
     private fun procurarTextoNaTela(node: AccessibilityNodeInfo, textoAlvo: String): Boolean {
         val textoDoNo = node.text?.toString() ?: ""
         val descricaoDoNo = node.contentDescription?.toString() ?: ""
 
-        // Verifica se o nó atual contém o nome do app
-        if (textoDoNo.contains(textoAlvo, ignoreCase = true) || descricaoDoNo.contains(textoAlvo, ignoreCase = true)) {
+        if (textoDoNo.contains(textoAlvo, ignoreCase = true) || descricaoDoNo.contains(
+                textoAlvo,
+                ignoreCase = true
+            )
+        ) {
             return true
         }
 
-        // Se não achou procura nos outros elementos dentro da tela
         for (i in 0 until node.childCount) {
             val child = node.getChild(i)
             if (child != null) {
@@ -336,12 +397,14 @@ class YouTubeMonitorService : AccessibilityService() {
     }
 
     private fun estaNaTelaDeResultados(root: AccessibilityNodeInfo): Boolean {
-        // Quando o YouTube carrega os resultados, ele cria um elemento com este ID no topo
-        val searchQuery = root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/search_query")
+        val searchQuery =
+            root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/search_query")
         return searchQuery.isNotEmpty()
     }
+
     private fun capturarPesquisaConfirmada(root: AccessibilityNodeInfo): String? {
-        val listaPesquisa = root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/search_query")
+        val listaPesquisa =
+            root.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/search_query")
 
         for (node in listaPesquisa) {
             val texto = node.text?.toString()
@@ -351,6 +414,7 @@ class YouTubeMonitorService : AccessibilityService() {
         }
         return null
     }
+
     private fun salvarPesquisaNoFirebase(termoPesquisado: String) {
         val prefs = applicationContext.getSharedPreferences("MonitorPrefs", MODE_PRIVATE)
         val codigoFilho = prefs.getString("codigo_filho", "SEM_CODIGO") ?: "SEM_CODIGO"

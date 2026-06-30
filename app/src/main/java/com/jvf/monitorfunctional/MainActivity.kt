@@ -36,7 +36,7 @@ import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.SupervisedUserCircle
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-
+import android.util.Log
 
 class MainActivity : AppCompatActivity() {
     private lateinit var auth: FirebaseAuth
@@ -73,7 +73,24 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun fluxoDependente() {
-        startActivity(Intent(this, DependenteActivity::class.java))
+        if (auth.currentUser != null){
+            Log.d("AuthKids", "O dispositivo já possui UID: ${auth.currentUser?.uid}")
+            startActivity(Intent(this, DependenteActivity::class.java))
+        } else {
+            Log.d("AuthKids", "Solicitando UID anônimo ao servidor...")
+
+            auth.signInAnonymously()
+                .addOnCompleteListener (this) { task ->
+                    if (task.isSuccessful) {
+                        Log.d("AuthKids", "Sucesso! UID gerado: ${auth.currentUser?.uid}")
+                    } else {
+                        Log.e("AuthKids", "Erro ao gerar UID anônimo", task.exception)
+                        Toast.makeText(this, "Erro ao conectar com o servidor seguro.", Toast.LENGTH_SHORT).show()
+                    }
+                    startActivity(Intent(this,DependenteActivity::class.java))
+                }
+        }
+
     }
 
     private fun iniciarLoginGoogle() {

@@ -38,7 +38,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -56,6 +57,7 @@ android {
 
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.10.00")
+    implementation("com.google.firebase:firebase-functions")
     implementation (composeBom)
     implementation ("androidx.compose.material:material-icons-extended:1.7.8")
     implementation ("com.google.firebase:firebase-messaging")
