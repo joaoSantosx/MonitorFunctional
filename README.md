@@ -1,57 +1,73 @@
-#  Aware Kids - Monitoramento Parental Inteligente
+# Aware Kids - Monitoramento Parental Inteligente
 
 ![Kotlin](https://img.shields.io/badge/Kotlin-B125EA?style=for-the-badge&logo=kotlin&logoColor=white)
 ![Android](https://img.shields.io/badge/Android_OS-3DDC84?style=for-the-badge&logo=android&logoColor=white)
 ![Jetpack Compose](https://img.shields.io/badge/Jetpack_Compose-4285F4?style=for-the-badge&logo=android&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
 ![Firebase](https://img.shields.io/badge/Firebase-FFCA28?style=for-the-badge&logo=firebase&logoColor=black)
 ![Gemini API](https://img.shields.io/badge/Gemini_AI-8E75B2?style=for-the-badge&logo=google&logoColor=white)
 
-O **Aware Kids** é um aplicativo nativo Android projetado para dar aos pais controle total e tranquilidade sobre o conteúdo que seus filhos consomem em plataformas de vídeo. 
+O **Aware Kids** é um ecossistema nativo Android projetado para dar aos pais controle total e tranquilidade sobre o conteúdo que seus filhos consomem em plataformas de vídeo. 
 
-Diferente de bloqueadores tradicionais, o app utiliza **Inteligência Artificial (Google Gemini)** para analisar dinamicamente o contexto dos vídeos assistidos, categorizando-os e emitindo alertas em tempo real baseados no nível de rigidez configurados pela família.
+Diferente de bloqueadores tradicionais baseados em DNS, o sistema utiliza **Inteligência Artificial (Google Gemini) Server-Side** para analisar dinamicamente o contexto dos vídeos e comentários assistidos, categorizando-os e emitindo alertas via Push Notification em tempo real, baseados no nível de rigidez configurado pela família.
 
 Desenvolvido por **João Victor Ferreira dos Santos, Brenda de Oliveira, Ramon Roque**.
 
 ---
 
-## Funcionalidades e Modelo de Negócios (SaaS)
+## 🚀 Modelo de Negócios (SaaS Freemium)
 
-O projeto foi arquitetado sob um modelo **Freemium**, separando as funcionalidades essenciais das avançadas através de Paywalls interativos e verificação de plano em tempo real na nuvem.
+O projeto foi arquitetado sob um modelo **Freemium**, processando limites de uso e transações diretamente via Firebase Cloud Functions para evitar burlas no lado do cliente (Client-Side).
 
 ### Plano Free
-* **Dashboard em Tempo Real:** O painel principal reage instantaneamente a novos vídeos assistidos utilizando `SnapshotListeners` do Firebase.
+* **Dashboard em Tempo Real:** O painel principal reage instantaneamente a novos vídeos utilizando `SnapshotListeners` do Firebase.
 * **Termômetro de Segurança:** Indicador visual animado que calcula a porcentagem de conteúdo seguro assistido recentemente.
-* **Níveis de Rigidez da IA:** Três configurações possíveis (Alta, Média, Baixa) que alteram o prompt de análise da inteligência artificial.
-* **Filtro de Notificações:** Controle granular sobre quais categorias de alertas (Violência, Adulto, Educativo, etc.) acionam notificações no celular do responsável.
-* **Segurança Anti-Fraude:** PIN de manutenção exigido para alterar configurações críticas ou desativar o monitoramento.
+* **Limite Diário de Análises:** Cota de avaliação de até 40 vídeos diários controlada via transações no servidor. Ao atingir o limite, o monitoramento é pausado (exigindo upgrade).
+* **Níveis de Rigidez da IA:** Três configurações possíveis (Alta, Média, Baixa) que calibram os pesos estruturais da análise.
+* **Relatório de Buscas:** Registro completo dos termos pesquisados na barra de buscas do YouTube pelo monitorado.
 
 ### Plano Premium
-* **Filtros Personalizados de Família:** Permite adicionar palavras-chave ou temas específicos (ex: "Susto", "Futebol") que devem ser considerados como nocivos pelo agente de IA.
-* **Filtro Histórico por Data:** Desbloqueia o `DateRangePicker` nativo do Android, permitindo consultas complexas e paginação do histórico de vídeos por períodos específicos.
-* **Gráficos de Horários de Uso:** Análise profunda dos horários de pico de consumo de tela do monitorado.
+* **Monitoramento Ilimitado (24/7):** Remoção completa da trava de 40 vídeos diários.
+* **Filtros Personalizados Familiares:** Inserção de palavras-chave exclusivas (Whitelist e Blacklist) interpretadas dinamicamente pela IA.
+* **Filtro Histórico por Data:** Desbloqueia o `DateRangePicker` nativo para paginação do histórico de vídeos em períodos específicos.
+* **Score e Gráficos Semanais:** Análise profunda dos padrões de consumo e categorias acessadas.
 
 ---
 
-## Arquitetura e Tecnologias
+## 🧠 Arquitetura e Engenharia de Software
 
-O aplicativo foi construído seguindo as melhores práticas do ecossistema Android moderno:
+O ecossistema foi dividido em um cliente leve (Android) e um cérebro robusto e seguro na nuvem (Node.js).
 
-* **UI/UX:** Totalmente construído com **Jetpack Compose** (Material Design 3). Componentes modulares, gerenciamento de estado (`StateHoisting`) e animações fluidas (`animateColorAsState`, `animateFloatAsState`).
-* **Backend & Database:** **Firebase Cloud Firestore** operando como "Única fonte da verdade". A sincronização bidirecional garante que se o plano (Free/Premium) for alterado no banco, a interface do usuário se reestrutura instantaneamente sem necessidade de recarregar a tela.
-*Inteligência Artificial & Prompt Engineering:** Integração com LLMs para processamento de linguagem natural. Utilização de engenharia de prompts avançada para injetar regras absolutas de exceção e bloqueio baseadas no usuário.
-* **Captura de Dados:** Uso de `AccessibilityService` para leitura de nós de tela (ViewNodes) no YouTube, capturando títulos e pesquisas de forma invisível.
-* **Persistência Local:** Uso estratégico do `SharedPreferences` para cache de códigos de vinculação e estado de planos, otimizando as requisições ao banco.
+### 📱 Front-end / Sensor (Android)
+* **UI/UX (Jetpack Compose):** Componentes modulares (Material Design 3), gerenciamento de estado e navegação fluida (sem falhas de tela branca no roteamento).
+* **Otimização Extrema de Bateria:** Implementação de `BroadcastReceiver` dinâmico. O `AccessibilityService` entra em suspensão imediata quando o dispositivo é bloqueado (Screen Off), poupando CPU e bateria.
+* **Auth Invisível:** Utilização de UID Anônimo do Firebase Authentication para vincular e rastrear dispositivos dependentes sem exigir criação de contas por parte da criança.
+* **Validador de Código:** Tratamento robusto para pareamento seguro entre o app do Responsável e do Monitorado.
+
+### ☁️ Back-end e IA (Node.js + Cloud Functions)
+* **Server-Side AI:** Toda a lógica de Inteligência Artificial, Prompt Engineering e chaves de API (Gemini e YouTube Data API v3) foram isoladas no servidor, garantindo segurança absoluta.
+* **Cache Global Multitenant:** Arquitetura de mitigação de custos. O servidor mapeia o raio-X neutro dos vídeos no Firestore. Se múltiplas crianças assistem ao mesmo vídeo, a API da IA é acionada apenas uma vez (Hit/Miss Cache), cruzando dados via JavaScript em microssegundos com as regras locais de cada família.
+* **Engenharia de Prompt Anti-Burla:** Instruções supremas e blindagem contra *Prompt Injection*, impedindo que instruções maliciosas nos comentários do YouTube ou regras das famílias subvertam o modelo.
 
 ---
 
-## Telas do Aplicativo
+## 🛡️ Segurança e Defesa (Anti-Tampering)
 
-1. **Painel de Controle (Menu):** Central de comando do responsável com acesso rápido aos relatórios, status de monitoramento e atalhos de assinatura.
-2. **Relatório de Vídeos:** Exibe o termômetro de segurança, o filtro premium de calendário e a lista de vídeos assistidos com motivos detalhados gerados pela IA.
-3. **Score da Semana:** Gráfico gerencial (`LinearProgressIndicator`) agrupando os dados de consumo da semana por categoria.
-4. **Relatório de Buscas:** Tela que exibe os últimos termos pesquisados pelo monitorado na barra de buscas do YouTube.
-5. **Configurações:** Painel contendo regras de rigidez, filtros de notificação, gerenciamento de PIN e a configuração das listas de exceções (Upsell).
-6. **Paywall (Premium):** Tela de vendas otimizada, destacando os benefícios do plano pago e simulando o gateway de assinatura.
+O aplicativo conta com camadas sobrepostas de segurança para impedir a evasão do monitoramento por usuários avançados:
+
+1. **Ofuscação R8/ProGuard:** O código-fonte, classes e rotas são severamente ofuscados, minificados e otimizados durante a compilação, tornando tentativas de engenharia reversa via descompilação do APK ineficazes.
+2. **Defesa Ativa de Configurações:** O `AccessibilityService` detecta e bloqueia ativamente tentativas de acesso à tela de configurações do Android, forçando o retorno à tela inicial (Home) caso o usuário tente desativar o serviço manualmente.
+3. **Firestore Security Rules:** O banco de dados possui regras estritas que validam payloads, tipos de dados e permissões, garantindo que usuários autenticados só leiam/escrevam nos nós pertencentes aos seus respectivos códigos de pareamento.
+4. **Termos e Consentimento:** Aceite explícito dos Termos de Uso acoplado ao fluxo de ativação, garantindo compliance.
+
+---
+
+## 📸 Telas do Aplicativo
+
+* **Painel de Controle:** Central de comando com atalhos de assinatura e status de monitoramento.
+* **Relatório de Vídeos & Buscas:** Exibe os motivos detalhados gerados pela IA e o log de pesquisas.
+* **Configurações:** Painel de regras de rigidez, notificações, PIN e listas de exceções.
+* **Paywall:** Tela de conversão Premium com detalhamento de benefícios.
 
 ---
 
